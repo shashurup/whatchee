@@ -4,11 +4,12 @@
 #include "nvs_flash.h"
 #include "nimble/ble.h"
 #include "nimble/nimble_port.h"
-#include "host/ble_gap.h"
-#include "host/util/util.h"
-#include "services/gap/ble_svc_gap.h"
-#include "host/ble_gatt.h"
-#include "services/gatt/ble_svc_gatt.h"
+#include <host/ble_gap.h>
+#include <host/util/util.h>
+#include <os/os_mbuf.h>
+#include <services/gap/ble_svc_gap.h>
+#include <host/ble_gatt.h>
+#include <services/gatt/ble_svc_gatt.h>
 
 #define BLE_GAP_APPEARANCE_GENERIC_TAG 0x0200
 #define BLE_GAP_URI_PREFIX_HTTPS 0x17
@@ -185,9 +186,6 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
     int rc = 0;
     struct ble_gap_conn_desc desc;
 
-    ESP_LOGI(TAG, "rx_char_handle = %d", rx_char_handle);
-    ESP_LOGI(TAG, "tx_char_handle = %d", tx_char_handle);
-    
     /* Handle different GAP event */
     switch (event->type) {
 
@@ -359,16 +357,61 @@ int gap_init(const char* name) {
     return rc;
 }
 
+struct Accumulator {
+  uint16_t length;
+  os_mbuf* data;
+};
+
+Accumulator accumulator = {};
+
+void parse_accumulated() {
+  ESP_LOGI(TAG, "Packet, code: 0x%x", accumulator.data->om_data[4]);
+  if (accumulator.data->om_data[0] == 0xab) {
+    switch (accumulator.data->om_data[4]) {
+    case 0x72:
+      // notifications
+      break;
+    case 0x73:
+      // alarm
+      break;
+    case 0x93:
+      // time setTime(30, 24, 15, 17, 1, 2021);  // 17th Jan 2021 15:24:30
+      ESP_LOGI(TAG, "Got time: %u, %u, %u, %u, %u, %u",
+               accumulator.data->om_data[13],
+               accumulator.data->om_data[12],
+               accumulator.data->om_data[11],
+               accumulator.data->om_data[10],
+               accumulator.data->om_data[9],
+               accumulator.data->om_data[7] * 256 + accumulator.data->om_data[8]);
+      break;
+    }
+  }
+  os_mbuf_free_chain(accumulator.data);
+}
+  
+void accumulate(os_mbuf* buf) {
+  if ((buf->om_data[0] == 0xab || buf->om_data[0] == 0xea) &&
+      (buf->om_data[3] == 0xfe || buf->om_data[3] == 0xff)) {
+    ESP_LOGI(TAG, "New packet, %u", os_mbuf_len(buf));
+    accumulator.length = buf->om_data[1] * 256 + buf->om_data[2] + 3;
+    accumulator.data = os_mbuf_dup(buf);
+  } else {
+    ESP_LOGI(TAG, "Add packet, %u", os_mbuf_len(buf));
+    os_mbuf_appendfrom(accumulator.data, buf, 1, os_mbuf_len(buf) - 1);
+  }
+  if (accumulator.length <= os_mbuf_len(accumulator.data))
+    parse_accumulated();
+}
 
 static int characteristic_access(uint16_t conn_handle, uint16_t attr_handle,
                                  struct ble_gatt_access_ctxt *ctxt, void *arg) {
     int rc = 0;
 
     if (conn_handle != BLE_HS_CONN_HANDLE_NONE) {
-      ESP_LOGI(TAG, "characteristic access; conn_handle=%d attr_handle=%d",
+      ESP_LOGD(TAG, "characteristic access; conn_handle=%d attr_handle=%d",
                conn_handle, attr_handle);
     } else {
-      ESP_LOGI(TAG, "characteristic access by nimble stack; attr_handle=%d",
+      ESP_LOGD(TAG, "characteristic access by nimble stack; attr_handle=%d",
                attr_handle);
     }
 
@@ -376,12 +419,9 @@ static int characteristic_access(uint16_t conn_handle, uint16_t attr_handle,
 
     case BLE_GATT_ACCESS_OP_WRITE_CHR:
         if (attr_handle == rx_char_handle) {
-          ESP_LOGI(TAG, "write the characteristic");
-          ESP_LOGI(TAG, "%d bytes received", ctxt->om->om_len);
-          // if (ctxt->om->om_len > 0) {
-          // } else {
-          //   goto error;
-          // }
+          ESP_LOGD(TAG, "write the characteristic");
+          ESP_LOGD(TAG, "%u bytes received", os_mbuf_len(ctxt->om));
+          accumulate(ctxt->om);
           return rc;
         }
         goto error;
@@ -397,21 +437,6 @@ error:
     return BLE_ATT_ERR_UNLIKELY;
 }
 
-/* Public functions */
-// void send_heart_rate_indication(void) {
-//     if (heart_rate_ind_status && heart_rate_chr_conn_handle_inited) {
-//         ble_gatts_indicate(heart_rate_chr_conn_handle,
-//                            heart_rate_chr_val_handle);
-//         ESP_LOGI(TAG, "heart rate indication sent!");
-//     }
-// }
-
-/*
- *  Handle GATT attribute register events
- *      - Service register event
- *      - Characteristic register event
- *      - Descriptor register event
- */
 void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg) {
     /* Local variables */
     char buf[BLE_UUID_STR_LEN];
@@ -565,6 +590,32 @@ static void nimble_host_task(void *param) {
 //     /* Clean up at exit */
 //     vTaskDelete(NULL);
 // }
+
+void send_command(uint8_t *command, size_t length) {
+  struct os_mbuf* buf = ble_hs_mbuf_from_flat(command, length);
+  ble_gatts_notify_custom(subscription_conn_handle,
+                          tx_char_handle, buf);
+}
+
+#define CHRONOSESP_VERSION_MAJOR 1
+#define CHRONOSESP_VERSION_MINOR 6
+#define CHRONOSESP_VERSION_PATCH 0
+
+void send_info() {
+  uint8_t infoCmd[] = {0xab, 0x00, 0x11, 0xff, 0x92, 0xc0,
+                       CHRONOSESP_VERSION_MAJOR, 
+                       (CHRONOSESP_VERSION_MINOR * 10 + CHRONOSESP_VERSION_PATCH),
+                       0x00, 0xfb, 0x1e, 0x40, 0xc0, 0x0e,
+                       0x32, 0x28, 0x00, 0xe2, 0, 0x80};
+  send_command(infoCmd, 20);
+}
+
+void send_battery(int millivolts) {
+  // uint8_t c = _isCharging ? 0x01 : 0x00;
+  uint8_t c = 0x0;
+  uint8_t batCmd[] = {0xAB, 0x00, 0x05, 0xFF, 0x91, 0x80, c, (uint8_t) (millivolts / 100)};
+  send_command(batCmd, 8);
+}
 
 void setup_ble(const char* name) {
     /* Local variables */

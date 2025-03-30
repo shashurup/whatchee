@@ -26,7 +26,8 @@ Gdeh0154d67 display(io);
 OpenFontRender fontRender;
 
 void idle_tasks() {
-  
+  // check screen needs updating
+  // check battery level needs to be sent
 }
 
 void setup_pm() {
@@ -90,8 +91,11 @@ extern "C" void app_main()
             esp_light_sleep_start();
           }
           break;
+        case CLIENT_SUBSCRIBED:
+          send_info();
+          send_battery(get_battery_millivolts());
         }
-      }
+        }
       idle_tasks();
     }
     else 

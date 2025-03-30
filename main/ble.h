@@ -5,4 +5,8 @@
 
 void setup_ble(const char* name);
 
+void send_info();
+
+void send_battery(int millivolts);
+
 #endif // BLE_H
