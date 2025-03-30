@@ -1,0 +1,9 @@
+dependencies:
+  calepd:
+    # git: git@github.com:martinberlin/CalEPD.git
+    path: ../../calepd
+  Adafruit-GFX:
+    git: git@github.com:martinberlin/Adafruit-GFX-Library-ESP-IDF.git
+  OpenFontRender:
+    git: git@github.com:Bodmer/OpenFontRender.git
+  zorxx/rtci2c: '*'
