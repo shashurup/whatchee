@@ -6,7 +6,7 @@
 
 struct Message {
   unsigned type;
-  unsigned value;
+  void* data;
 };
 
 extern QueueHandle_t main_queue;

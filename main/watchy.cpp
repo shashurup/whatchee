@@ -81,11 +81,11 @@ extern "C" void app_main()
       if (!handle_misc_hw_events(msg)) {
         switch (msg.type) {
         case BUTTON_PRESSED:
-          ESP_LOGI(TAG, "Button %u pressed", msg.value);
+          ESP_LOGI(TAG, "Button %u pressed", (unsigned)msg.data);
           break;
         case BUTTON_RELEASED:
-          ESP_LOGI(TAG, "Button %u released", msg.value);
-          if (msg.value == BUTTON_BACK) {
+          ESP_LOGI(TAG, "Button %u released", (unsigned)msg.data);
+          if ((unsigned)msg.data == BUTTON_BACK) {
             ESP_LOGI(TAG, "Entering light sleep");
             vibrate(75, 6);
             esp_light_sleep_start();

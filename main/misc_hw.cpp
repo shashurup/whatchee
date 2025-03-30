@@ -47,7 +47,7 @@ void on_debounce_timer(TimerHandle_t timer) {
   gpio_num_t gpio_pin = buttons_gpio[btn];
   int level = gpio_get_level(gpio_pin);
   ESP_LOGD(__FILE__, "Pin %lu level is %d\n", btn, level);
-  struct Message msg = {level ? BUTTON_PRESSED : BUTTON_RELEASED, btn};
+  struct Message msg = {level ? BUTTON_PRESSED : BUTTON_RELEASED, (void *)btn};
   xQueueSend(main_queue, &msg, 0);
   gpio_set_intr_type(gpio_pin,
                      level ? GPIO_INTR_LOW_LEVEL : GPIO_INTR_HIGH_LEVEL);
@@ -70,14 +70,14 @@ void debounce(unsigned btn) {
 void button_handler(void* arg) {
   uint32_t btn = (uint32_t) arg;
   gpio_intr_disable(buttons_gpio[btn]);
-  struct Message msg = {BUTTON_CHANGED, btn};
+  struct Message msg = {BUTTON_CHANGED, (void *)btn};
   xQueueSendFromISR(main_queue, &msg, NULL);
 }
 
 bool handle_misc_hw_events(Message msg) {
   if (msg.type == BUTTON_CHANGED) {
-    ESP_LOGD(__FILE__, "Button %u has changed", msg.value);
-    debounce(msg.value);
+    ESP_LOGD(__FILE__, "Button %u has changed", (unsigned)msg.data);
+    debounce((unsigned)msg.data);
     return true;
   }
   return false;

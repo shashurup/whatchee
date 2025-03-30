@@ -41,6 +41,16 @@ static uint16_t tx_char_handle;
 static uint16_t subscription_conn_handle = 0;
 static bool subscribed = false;
 
+Notification::Notification(size_t text_size) {
+  text = (char *)malloc(text_size + 1);
+  text[text_size] = 0;
+}
+
+Notification::~Notification() {
+  if (text)
+    free(text);
+}
+
 static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
     {.type = BLE_GATT_SVC_TYPE_PRIMARY,
      .uuid = &svc_uuid.u,
@@ -368,14 +378,23 @@ void parse_accumulated() {
   ESP_LOGI(TAG, "Packet, code: 0x%x", accumulator.data->om_data[4]);
   if (accumulator.data->om_data[0] == 0xab) {
     switch (accumulator.data->om_data[4]) {
-    case 0x72:
-      // notifications
+    case 0x72: {
+      accumulator.data = os_mbuf_pullup(accumulator.data, 8);
+      int text_len = OS_MBUF_PKTLEN(accumulator.data) - 8;
+      Notification *nt = new Notification(text_len);
+      nt->icon = accumulator.data->om_data[6];
+      nt->state = accumulator.data->om_data[7];
+      os_mbuf_copydata(accumulator.data, 8, text_len, nt->text);
+      struct Message msg = {CLIENT_NOTIFICATION, nt};
+      xQueueSend(main_queue, &msg, 0);
       break;
+    }
     case 0x73:
       // alarm
       break;
     case 0x93:
       // time setTime(30, 24, 15, 17, 1, 2021);  // 17th Jan 2021 15:24:30
+      accumulator.data = os_mbuf_pullup(accumulator.data, 14);
       ESP_LOGI(TAG, "Got time: %u, %u, %u, %u, %u, %u",
                accumulator.data->om_data[13],
                accumulator.data->om_data[12],
@@ -399,7 +418,7 @@ void accumulate(os_mbuf* buf) {
     ESP_LOGI(TAG, "Add packet, %u", os_mbuf_len(buf));
     os_mbuf_appendfrom(accumulator.data, buf, 1, os_mbuf_len(buf) - 1);
   }
-  if (accumulator.length <= os_mbuf_len(accumulator.data))
+  if (accumulator.length <= OS_MBUF_PKTLEN(accumulator.data))
     parse_accumulated();
 }
 
