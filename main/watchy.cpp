@@ -13,6 +13,7 @@
 #include <Fonts/FreeSans12pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
 #include <OpenFontRender.h>
+#include <time.h>
 
 #include "main_queue.h"
 #include "ble.h"
@@ -21,9 +22,74 @@
 
 static const char* TAG = "main";
 
+#define NOTIFICATIONS_BUFFER_SIZE 2048
+
+struct NotificationBuffer {
+  char* current;
+  char* top;
+  char buffer[NOTIFICATIONS_BUFFER_SIZE];
+
+  void add(const char* notification) {
+    if (!top)
+      top = buffer;
+    size_t len = strlen(notification);
+    const char* end = buffer + NOTIFICATIONS_BUFFER_SIZE;
+    if (top + len + 1 > end) {
+      for (char* c = top; c < end; c++)
+        *c = 0;
+      top = buffer;
+    }
+    bool overlap = top[len];
+    current = strcpy(top, notification);
+    top += len + 1;
+    if (overlap)
+      for (char* c = top; *c && c < end; c++)
+        *c = 0;
+  }
+
+  void clear() {
+    current = 0;
+    top = buffer;
+  }
+
+  void prev() {
+    if (!current)
+      return;
+    char *c = current;
+    if (c == buffer)
+      c = buffer + NOTIFICATIONS_BUFFER_SIZE - 1;
+    for (; !*c && c >= buffer; --c);
+    for (; *c && c >= buffer; --c);
+    current = c;
+  }
+
+  void next() {
+    if (!current)
+      return;
+    const char* end = buffer + NOTIFICATIONS_BUFFER_SIZE;
+    char *c = current;
+    for (; *c && c < end; ++c);
+    for (; !*c && c < end; ++c);
+    if (c < end)
+      current = c;
+    else
+      current = buffer;
+  }
+};
+
 EpdSpi io;
 Gdeh0154d67 display(io);
 OpenFontRender fontRender;
+NotificationBuffer notifications;
+
+void update_current_time(tm* subj) {
+  set_rtc_time(subj);
+}
+
+void new_notification(Notification* subj) {
+  notifications.add(subj->text);
+  delete subj;
+}
 
 void idle_tasks() {
   // check screen needs updating
@@ -49,6 +115,12 @@ extern "C" void app_main()
   setup_ble("Whatcheee");
   setup_misc_hw();
   setup_pm();
+
+  struct tm now;
+  bool valid = get_rtc_time(&now);
+  ESP_LOGI(TAG, "RTC time: %u-%u-%u %u:%u:%u (%d)",
+           now.tm_year, now.tm_mon, now.tm_mday,
+           now.tm_hour, now.tm_min, now.tm_sec, valid);
 
   fontRender.setDrawer(display);
   if (fontRender.loadFont(binaryttf, sizeof(binaryttf)))
@@ -94,8 +166,20 @@ extern "C" void app_main()
         case CLIENT_SUBSCRIBED:
           send_info();
           send_battery(get_battery_millivolts());
+          break;
+        case CLIENT_TIME: {
+          tm* t = (tm *)msg.data;
+          ESP_LOGD(TAG, "Got time: %u-%u-%u %u:%u:%u",
+                   t->tm_year, t->tm_mon, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+          update_current_time(t);
+          delete t;
+          break;
         }
+        case CLIENT_NOTIFICATION:
+          new_notification((Notification *)msg.data);
+          break;
         }
+      }
       idle_tasks();
     }
     else 

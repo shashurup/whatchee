@@ -6,4 +6,3 @@ dependencies:
     git: git@github.com:martinberlin/Adafruit-GFX-Library-ESP-IDF.git
   OpenFontRender:
     git: git@github.com:Bodmer/OpenFontRender.git
-  zorxx/rtci2c: '*'

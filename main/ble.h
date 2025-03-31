@@ -6,6 +6,7 @@
 
 #define CLIENT_SUBSCRIBED 11u
 #define CLIENT_NOTIFICATION 12u
+#define CLIENT_TIME 13u
 
 struct Notification {
   uint8_t icon;

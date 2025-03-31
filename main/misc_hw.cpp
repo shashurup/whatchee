@@ -2,10 +2,12 @@
 #include <driver/gpio.h>
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
-#include "freertos/queue.h"
-#include "freertos/task.h"
-#include "freertos/timers.h"
+#include <freertos/queue.h>
+#include <freertos/task.h>
+#include <freertos/timers.h>
 #include <esp_adc/adc_oneshot.h>
+#include <driver/i2c_master.h>
+#include <pcf8563.h>
 
 #define VIB_MOTOR_PIN GPIO_NUM_13
 #define BUTTON_MENU_GPIO GPIO_NUM_26
@@ -83,6 +85,31 @@ bool handle_misc_hw_events(Message msg) {
   return false;
 }
 
+i2c_dev_t i2c_dev = {
+  .port = I2C_NUM_0,
+  .cfg = {
+    .mode = I2C_MODE_MASTER,
+    .sda_io_num = GPIO_NUM_21,
+    .scl_io_num = GPIO_NUM_22,
+    .sda_pullup_en = 0,
+    .scl_pullup_en = 0,
+    .clk_flags = 0
+  },
+  .addr = 0x51,
+  .mutex = 0,
+  .timeout_ticks = 0
+};
+
+bool get_rtc_time(tm* t) {
+  bool valid = false;
+  pcf8563_get_time(&i2c_dev, t, &valid);
+  return valid;
+}
+
+void set_rtc_time(tm* t) {
+  pcf8563_set_time(&i2c_dev, t);
+}
+
 void setup_battery_adc() {
   adc_oneshot_unit_init_cfg_t init_config = {
     .unit_id = ADC_UNIT_1,
@@ -110,7 +137,16 @@ void setup_buttons() {
   }
 }
 
+void setup_rtc() {
+  // TODO find modern library or just copy its code
+  // ESP-IDF-LIB uses old i2c driver
+  ESP_ERROR_CHECK(i2cdev_init());
+  ESP_ERROR_CHECK(i2c_dev_create_mutex(&i2c_dev));
+  ESP_ERROR_CHECK(pcf8563_init_desc(&i2c_dev, I2C_NUM_0, GPIO_NUM_21, GPIO_NUM_22));
+}
+
 void setup_misc_hw() {
   setup_buttons();
   setup_battery_adc();
+  setup_rtc();
 }

@@ -3,6 +3,7 @@
 
 #include "main_queue.h"
 #include <inttypes.h>
+#include <time.h>
 
 #define BUTTON_MENU 0
 #define BUTTON_BACK 1
@@ -19,5 +20,9 @@ int get_battery_millivolts();
 void setup_misc_hw();
 
 bool handle_misc_hw_events(Message msg);
+
+bool get_rtc_time(tm* t);
+
+void set_rtc_time(tm* t);
 
 #endif /* _RTCI2C_H */

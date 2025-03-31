@@ -10,6 +10,7 @@
 #include <services/gap/ble_svc_gap.h>
 #include <host/ble_gatt.h>
 #include <services/gatt/ble_svc_gatt.h>
+#include <time.h>
 
 #define BLE_GAP_APPEARANCE_GENERIC_TAG 0x0200
 #define BLE_GAP_URI_PREFIX_HTTPS 0x17
@@ -392,17 +393,20 @@ void parse_accumulated() {
     case 0x73:
       // alarm
       break;
-    case 0x93:
+    case 0x93: {
       // time setTime(30, 24, 15, 17, 1, 2021);  // 17th Jan 2021 15:24:30
       accumulator.data = os_mbuf_pullup(accumulator.data, 14);
-      ESP_LOGI(TAG, "Got time: %u, %u, %u, %u, %u, %u",
-               accumulator.data->om_data[13],
-               accumulator.data->om_data[12],
-               accumulator.data->om_data[11],
-               accumulator.data->om_data[10],
-               accumulator.data->om_data[9],
-               accumulator.data->om_data[7] * 256 + accumulator.data->om_data[8]);
+      tm* t = new tm();
+      t->tm_year = accumulator.data->om_data[7] * 256 + accumulator.data->om_data[8] - 1900;
+      t->tm_mon = accumulator.data->om_data[9];
+      t->tm_mday = accumulator.data->om_data[10];
+      t->tm_hour = accumulator.data->om_data[11];
+      t->tm_min = accumulator.data->om_data[12];
+      t->tm_sec = accumulator.data->om_data[13];
+      struct Message msg = {CLIENT_TIME, t};
+      xQueueSend(main_queue, &msg, 0);
       break;
+    }
     }
   }
   os_mbuf_free_chain(accumulator.data);
@@ -588,27 +592,6 @@ static void nimble_host_task(void *param) {
     /* Clean up at exit */
     vTaskDelete(NULL);
 }
-
-// static void heart_rate_task(void *param) {
-//     /* Task entry log */
-//     ESP_LOGI(TAG, "heart rate task has been started!");
-// 
-//     /* Loop forever */
-//     while (1) {
-//         /* Update heart rate value every 1 second */
-//         update_heart_rate();
-//         ESP_LOGI(TAG, "heart rate updated to %d", get_heart_rate());
-// 
-//         /* Send heart rate indication if enabled */
-//         send_heart_rate_indication();
-// 
-//         /* Sleep */
-//         vTaskDelay(HEART_RATE_TASK_PERIOD);
-//     }
-// 
-//     /* Clean up at exit */
-//     vTaskDelete(NULL);
-// }
 
 void send_command(uint8_t *command, size_t length) {
   struct os_mbuf* buf = ble_hs_mbuf_from_flat(command, length);
