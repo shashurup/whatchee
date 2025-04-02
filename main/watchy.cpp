@@ -79,11 +79,47 @@ struct NotificationBuffer {
 
 EpdSpi io;
 Gdeh0154d67 display(io);
-OpenFontRender fontRender;
+OpenFontRender font_renderer;
 NotificationBuffer notifications;
+int time_sync_day = 0;
+struct tm display_time;
 
-void update_current_time(tm* subj) {
-  set_rtc_time(subj);
+void sync_current_time(tm* subj) {
+  if (subj->tm_mday != time_sync_day) {
+    time_sync_day = subj->tm_mday;
+    set_rtc_time(subj);
+  }
+}
+
+void draw_main_screen(tm* time, int battery, bool refresh) {
+  display.fillScreen(EPD_WHITE);
+  char hour_min[6];
+  sprintf(hour_min, "%02d:%02d", time->tm_hour, time->tm_min);
+  font_renderer.setFontSize(64);
+  uint32_t hm_width = font_renderer.getTextWidth(hour_min);
+  uint32_t hm_height = font_renderer.getTextHeight(hour_min);
+  font_renderer.drawString(hour_min,
+                           (int32_t) (GDEH0154D67_WIDTH - hm_width) / 2,
+                           40,
+                           0, 0xffff);
+
+  char day_month[11];
+  strftime(day_month, 11, "%a %e %b", time);
+  font_renderer.setFontSize(32);
+  uint32_t dm_width = font_renderer.getTextWidth(day_month);
+  uint32_t dm_height = font_renderer.getTextHeight(day_month);
+  font_renderer.drawString(day_month,
+                           (int32_t)(200 - dm_width) / 2,
+                           60 + hm_height,
+                           0, 0xffff);
+
+  font_renderer.setCursor(20, 60 + hm_height + 15 + dm_height);
+  font_renderer.setFontSize(24);
+  font_renderer.printf("%d", battery);
+  if (refresh)
+    display.update();
+  else
+    display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
 }
 
 void new_notification(Notification* subj) {
@@ -92,7 +128,14 @@ void new_notification(Notification* subj) {
 }
 
 void idle_tasks() {
-  // check screen needs updating
+  struct tm now;
+  bool valid = get_rtc_time(&now);
+  if (valid && now.tm_min != display_time.tm_min) {
+    ESP_LOGI(TAG, "Updating time");
+    display_time = now;
+    draw_main_screen(&now, get_battery_millivolts(), false);
+    //display.deepSleep();
+  }
   // check battery level needs to be sent
 }
 
@@ -116,34 +159,21 @@ extern "C" void app_main()
   setup_misc_hw();
   setup_pm();
 
-  struct tm now;
-  bool valid = get_rtc_time(&now);
+  bool valid = get_rtc_time(&display_time);
   ESP_LOGI(TAG, "RTC time: %u-%u-%u %u:%u:%u (%d)",
-           now.tm_year, now.tm_mon, now.tm_mday,
-           now.tm_hour, now.tm_min, now.tm_sec, valid);
+           display_time.tm_year, display_time.tm_mon, display_time.tm_mday,
+           display_time.tm_hour, display_time.tm_min, display_time.tm_sec, valid);
 
-  fontRender.setDrawer(display);
-  if (fontRender.loadFont(binaryttf, sizeof(binaryttf)))
+  font_renderer.setDrawer(display);
+  if (font_renderer.loadFont(binaryttf, sizeof(binaryttf)))
     ESP_LOGE(TAG, "Error loading font");
-
   display.init(false);
   display.fillScreen(EPD_WHITE);
   display.setTextColor(EPD_BLACK);
-  // display.setFont(&FreeSans12pt7b);
-  // display.println("");
-  // display.println("Hi, I'm Whatcheee");
-  // display.println("");
-  // display.setFont(&FreeMonoBold24pt7b);
-  // display.println(" 20:59");
+  font_renderer.setFontColor(0);
 
-  fontRender.setFontColor(0);
-  fontRender.setFontSize(20);
-  fontRender.printf("Привет, Whatchee!!!\n");
-  fontRender.setFontSize(64);
-  fontRender.printf("20:59");
-
-  display.update();
-  display.deepSleep();
+  draw_main_screen(&display_time, get_battery_millivolts(), true);
+  // display.deepSleep();
 
   ESP_LOGI(TAG, "Battery voltage: %d", get_battery_millivolts());
   
@@ -171,7 +201,7 @@ extern "C" void app_main()
           tm* t = (tm *)msg.data;
           ESP_LOGD(TAG, "Got time: %u-%u-%u %u:%u:%u",
                    t->tm_year, t->tm_mon, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
-          update_current_time(t);
+          sync_current_time(t);
           delete t;
           break;
         }
