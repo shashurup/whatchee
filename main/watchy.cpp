@@ -125,6 +125,7 @@ void draw_main_screen(tm* time, int battery, bool refresh) {
 void new_notification(Notification* subj) {
   notifications.add(subj->text);
   delete subj;
+  vibrate(75, 6);
 }
 
 void idle_tasks() {
@@ -134,7 +135,7 @@ void idle_tasks() {
     ESP_LOGI(TAG, "Updating time");
     display_time = now;
     draw_main_screen(&now, get_battery_millivolts(), false);
-    //display.deepSleep();
+    display.deepSleep();
   }
   // check battery level needs to be sent
 }
@@ -143,8 +144,8 @@ void setup_pm() {
   esp_pm_config_t pm_config = {
     .max_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
     .min_freq_mhz = CONFIG_XTAL_FREQ,
-    .light_sleep_enable = false
-    // .light_sleep_enable = true
+    // .light_sleep_enable = false
+    .light_sleep_enable = true
   };
   ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
   esp_sleep_enable_gpio_wakeup();
@@ -168,12 +169,10 @@ extern "C" void app_main()
   if (font_renderer.loadFont(binaryttf, sizeof(binaryttf)))
     ESP_LOGE(TAG, "Error loading font");
   display.init(false);
-  display.fillScreen(EPD_WHITE);
-  display.setTextColor(EPD_BLACK);
   font_renderer.setFontColor(0);
 
   draw_main_screen(&display_time, get_battery_millivolts(), true);
-  // display.deepSleep();
+  display.deepSleep();
 
   ESP_LOGI(TAG, "Battery voltage: %d", get_battery_millivolts());
   
