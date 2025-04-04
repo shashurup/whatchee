@@ -394,7 +394,6 @@ void parse_accumulated() {
       // alarm
       break;
     case 0x93: {
-      // time setTime(30, 24, 15, 17, 1, 2021);  // 17th Jan 2021 15:24:30
       accumulator.data = os_mbuf_pullup(accumulator.data, 14);
       tm* t = new tm();
       t->tm_year = accumulator.data->om_data[7] * 256 + accumulator.data->om_data[8] - 1900;
@@ -403,6 +402,7 @@ void parse_accumulated() {
       t->tm_hour = accumulator.data->om_data[11];
       t->tm_min = accumulator.data->om_data[12];
       t->tm_sec = accumulator.data->om_data[13];
+      mktime(t);
       struct Message msg = {CLIENT_TIME, t};
       xQueueSend(main_queue, &msg, 0);
       break;
@@ -612,10 +612,10 @@ void send_info() {
   send_command(infoCmd, 20);
 }
 
-void send_battery(int millivolts) {
+void send_battery(uint8_t level) {
   // uint8_t c = _isCharging ? 0x01 : 0x00;
   uint8_t c = 0x0;
-  uint8_t batCmd[] = {0xAB, 0x00, 0x05, 0xFF, 0x91, 0x80, c, (uint8_t) (millivolts / 100)};
+  uint8_t batCmd[] = {0xAB, 0x00, 0x05, 0xFF, 0x91, 0x80, c, level};
   send_command(batCmd, 8);
 }
 

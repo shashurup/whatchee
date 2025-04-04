@@ -23,6 +23,8 @@
 static const char* TAG = "main";
 
 #define NOTIFICATIONS_BUFFER_SIZE 2048
+#define MAIN_SCREEN 0
+#define NOTIFICATION_SCREEN 1
 
 struct NotificationBuffer {
   char* current;
@@ -83,6 +85,9 @@ OpenFontRender font_renderer;
 NotificationBuffer notifications;
 int time_sync_day = 0;
 struct tm display_time;
+int screen = MAIN_SCREEN;
+char* displayed_notification = 0;
+
 
 void sync_current_time(tm* subj) {
   if (subj->tm_mday != time_sync_day) {
@@ -91,7 +96,7 @@ void sync_current_time(tm* subj) {
   }
 }
 
-void draw_main_screen(tm* time, int battery, bool refresh) {
+void draw_main_screen(tm* time, uint8_t battery, bool refresh) {
   display.fillScreen(EPD_WHITE);
   char hour_min[6];
   sprintf(hour_min, "%02d:%02d", time->tm_hour, time->tm_min);
@@ -115,11 +120,19 @@ void draw_main_screen(tm* time, int battery, bool refresh) {
 
   font_renderer.setCursor(20, 60 + hm_height + 15 + dm_height);
   font_renderer.setFontSize(24);
-  font_renderer.printf("%d", battery);
+  font_renderer.printf("%u", battery);
   if (refresh)
     display.update();
   else
     display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
+}
+
+void draw_notifications() {
+  display.fillScreen(EPD_WHITE);
+  font_renderer.setCursor(5, 5);
+  font_renderer.setFontSize(20);
+  font_renderer.printf("%s", notifications.current);
+  display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
 }
 
 void new_notification(Notification* subj) {
@@ -129,15 +142,26 @@ void new_notification(Notification* subj) {
 }
 
 void idle_tasks() {
-  struct tm now;
-  bool valid = get_rtc_time(&now);
-  if (valid && now.tm_min != display_time.tm_min) {
-    ESP_LOGI(TAG, "Updating time");
-    display_time = now;
-    draw_main_screen(&now, get_battery_millivolts(), false);
+  if (screen == NOTIFICATION_SCREEN &&
+      notifications.current &&
+      notifications.current != displayed_notification) {
+    draw_notifications();
     display.deepSleep();
+    displayed_notification = notifications.current;
   }
-  // check battery level needs to be sent
+  else if (screen == MAIN_SCREEN) {
+    struct tm now;
+    bool valid = get_rtc_time(&now);
+    if (valid && now.tm_min != display_time.tm_min) {
+      ESP_LOGI(TAG, "Updating time");
+      draw_main_screen(&now, get_battery_level(), false);
+      display_time = now;
+      display.deepSleep();
+    }
+    if (valid && now.tm_hour != display_time.tm_hour) {
+      send_battery(get_battery_level());
+    }
+  }
 }
 
 void setup_pm() {
@@ -171,9 +195,15 @@ extern "C" void app_main()
   display.init(false);
   font_renderer.setFontColor(0);
 
-  draw_main_screen(&display_time, get_battery_millivolts(), true);
-  display.deepSleep();
+  if (valid) {
+    draw_main_screen(&display_time, get_battery_level(), true);
+    display.deepSleep();
+  }
 
+  notifications.add("Quite short test message 1");
+  notifications.add("Quite loooooooooooooooooooooooong test message 2");
+  screen = NOTIFICATION_SCREEN;
+  
   ESP_LOGI(TAG, "Battery voltage: %d", get_battery_millivolts());
   
   while(true) {
@@ -183,10 +213,23 @@ extern "C" void app_main()
         switch (msg.type) {
         case BUTTON_PRESSED:
           ESP_LOGI(TAG, "Button %u pressed", (unsigned)msg.data);
+          switch ((unsigned)msg.data) {
+          case BUTTON_BACK:
+            screen = MAIN_SCREEN;
+            break;
+          case BUTTON_UP:
+            screen = NOTIFICATION_SCREEN;
+            notifications.prev();
+            break;
+          case BUTTON_DOWN:
+            screen = NOTIFICATION_SCREEN;
+            notifications.next();
+            break;
+          }
           break;
         case BUTTON_RELEASED:
           ESP_LOGI(TAG, "Button %u released", (unsigned)msg.data);
-          if ((unsigned)msg.data == BUTTON_BACK) {
+          if ((unsigned)msg.data == BUTTON_MENU) {
             ESP_LOGI(TAG, "Entering light sleep");
             vibrate(75, 6);
             esp_light_sleep_start();
@@ -194,7 +237,7 @@ extern "C" void app_main()
           break;
         case CLIENT_SUBSCRIBED:
           send_info();
-          send_battery(get_battery_millivolts());
+          send_battery(get_battery_level());
           break;
         case CLIENT_TIME: {
           tm* t = (tm *)msg.data;
@@ -206,6 +249,7 @@ extern "C" void app_main()
         }
         case CLIENT_NOTIFICATION:
           new_notification((Notification *)msg.data);
+          screen = NOTIFICATION_SCREEN;
           break;
         }
       }

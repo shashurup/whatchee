@@ -21,6 +21,6 @@ void setup_ble(const char* name);
 
 void send_info();
 
-void send_battery(int millivolts);
+void send_battery(uint8_t level);
 
 #endif // BLE_H

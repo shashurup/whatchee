@@ -15,6 +15,8 @@
 
 void vibrate(uint8_t intervalMs, uint8_t length);
 
+uint8_t get_battery_level();
+
 int get_battery_millivolts();
 
 void setup_misc_hw();

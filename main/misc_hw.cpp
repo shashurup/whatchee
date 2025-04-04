@@ -44,6 +44,15 @@ int get_battery_millivolts() {
   return battery_voltage * 2 * 2450 / 4096;
 }
 
+#define BATTERY_MAX 2900
+#define BATTERY_MIN 2100
+
+uint8_t get_battery_level() {
+  int mvs = get_battery_millivolts();
+  uint8_t level = (mvs - BATTERY_MIN) * 100 / (BATTERY_MAX - BATTERY_MIN);
+  return level > 100 ? 100 : level;
+}
+
 void on_debounce_timer(TimerHandle_t timer) {
   uint32_t btn = (uint32_t) pvTimerGetTimerID(timer);
   gpio_num_t gpio_pin = buttons_gpio[btn];
