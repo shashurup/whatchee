@@ -12,76 +12,22 @@
 #include <gdeh0154d67.h>
 #include <Fonts/FreeSans12pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
-#include <OpenFontRender.h>
 #include <time.h>
 
 #include "main_queue.h"
 #include "ble.h"
 #include "misc_hw.h"
 #include "binaryttf.h"
+#include "utils.h"
 
 static const char* TAG = "main";
 
-#define NOTIFICATIONS_BUFFER_SIZE 2048
 #define MAIN_SCREEN 0
 #define NOTIFICATION_SCREEN 1
 
-struct NotificationBuffer {
-  char* current;
-  char* top;
-  char buffer[NOTIFICATIONS_BUFFER_SIZE];
-
-  void add(const char* notification) {
-    if (!top)
-      top = buffer;
-    size_t len = strlen(notification);
-    const char* end = buffer + NOTIFICATIONS_BUFFER_SIZE;
-    if (top + len + 1 > end) {
-      for (char* c = top; c < end; c++)
-        *c = 0;
-      top = buffer;
-    }
-    bool overlap = top[len];
-    current = strcpy(top, notification);
-    top += len + 1;
-    if (overlap)
-      for (char* c = top; *c && c < end; c++)
-        *c = 0;
-  }
-
-  void clear() {
-    current = 0;
-    top = buffer;
-  }
-
-  void prev() {
-    if (!current)
-      return;
-    char *c = current;
-    if (c == buffer)
-      c = buffer + NOTIFICATIONS_BUFFER_SIZE - 1;
-    for (; !*c && c >= buffer; --c);
-    for (; *c && c >= buffer; --c);
-    current = c;
-  }
-
-  void next() {
-    if (!current)
-      return;
-    const char* end = buffer + NOTIFICATIONS_BUFFER_SIZE;
-    char *c = current;
-    for (; *c && c < end; ++c);
-    for (; !*c && c < end; ++c);
-    if (c < end)
-      current = c;
-    else
-      current = buffer;
-  }
-};
-
 EpdSpi io;
 Gdeh0154d67 display(io);
-OpenFontRender font_renderer;
+MyFontRender font_renderer;
 NotificationBuffer notifications;
 int time_sync_day = 0;
 struct tm display_time;
@@ -103,10 +49,10 @@ void draw_main_screen(tm* time, uint8_t battery, bool refresh) {
   font_renderer.setFontSize(64);
   uint32_t hm_width = font_renderer.getTextWidth(hour_min);
   uint32_t hm_height = font_renderer.getTextHeight(hour_min);
-  font_renderer.drawString(hour_min,
-                           (int32_t) (GDEH0154D67_WIDTH - hm_width) / 2,
-                           40,
-                           0, 0xffff);
+  ESP_LOGI(TAG, "hm_width: %lu, hm_height: %lu", hm_width, hm_height);
+  uint32_t hm_x = (int32_t) (GDEH0154D67_WIDTH - hm_width) / 2;
+  uint32_t hm_y = 40;
+  font_renderer.drawString(hour_min, hm_x, hm_y, 0, 0xffff);
 
   char day_month[11];
   strftime(day_month, 11, "%a %e %b", time);
@@ -123,19 +69,57 @@ void draw_main_screen(tm* time, uint8_t battery, bool refresh) {
   font_renderer.printf("%u", battery);
   if (refresh)
     display.update();
-  else
-    display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
+  else {
+    // uint32_t upd_x = 0;
+    // uint32_t upd_y = 0;
+    // uint32_t upd_w = GDEH0154D67_WIDTH;
+    // uint32_t upd_h = GDEH0154D67_HEIGHT;
+    // only last digit by defalt
+    // uint32_t upd_x = hm_x + hm_width * 3 / 4;
+    uint32_t upd_x = hm_x + hm_width * 3 / 4 + 5;
+    uint32_t upd_y = hm_y;
+    uint32_t upd_w = hm_width / 4;
+    // uint32_t upd_h = hm_height;
+    uint32_t upd_h = hm_height + 15;
+    if (display_time.tm_hour != time->tm_hour) {
+      // the whole screen each hour
+      upd_x = 0;
+      upd_y = 0;
+      upd_w = GDEH0154D67_WIDTH;
+      upd_h = GDEH0154D67_HEIGHT;
+    } else if (display_time.tm_min / 10 != time->tm_min / 10) {
+      // last two digits every 10 minutes
+      upd_x = hm_x + hm_width / 2;
+      // upd_w = hm_width / 2;
+      upd_w = hm_width / 2 + 5;
+    }
+    ESP_LOGI(TAG, "upd_x: %lu, upd_y: %lu, upd_w: %lu, upd_h: %lu",
+             upd_x, upd_y, upd_w, upd_h);
+    display.updateWindow(upd_x, upd_y, upd_w, upd_h, false);
+  }
 }
 
 void draw_notifications() {
   display.fillScreen(EPD_WHITE);
   font_renderer.setCursor(5, 5);
   font_renderer.setFontSize(20);
-  font_renderer.printf("%s", notifications.current);
+  font_renderer.drawStringBreakLines(notifications.current,
+                                     5, 5, 190, 190);
   display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
 }
 
+void preprocess_notification(Notification* subj) {
+  for (int i = 0; i < strlen(subj->text); ++i) {
+    char ch = subj->text[i];
+    if (ch == '\n' || ch == '\r' || ch == '\t') {
+      subj->text[i] = ' ';
+    }
+  }
+}
+
 void new_notification(Notification* subj) {
+  ESP_LOGI(TAG, "New notification: %s", subj->text);
+  preprocess_notification(subj);
   notifications.add(subj->text);
   delete subj;
   vibrate(75, 6);
@@ -148,18 +132,19 @@ void idle_tasks() {
     draw_notifications();
     display.deepSleep();
     displayed_notification = notifications.current;
+    display_time = {};
   }
   else if (screen == MAIN_SCREEN) {
     struct tm now;
     bool valid = get_rtc_time(&now);
+    if (valid && now.tm_hour != display_time.tm_hour) {
+      send_battery(get_battery_level());
+    }
     if (valid && now.tm_min != display_time.tm_min) {
       ESP_LOGI(TAG, "Updating time");
       draw_main_screen(&now, get_battery_level(), false);
       display_time = now;
       display.deepSleep();
-    }
-    if (valid && now.tm_hour != display_time.tm_hour) {
-      send_battery(get_battery_level());
     }
   }
 }
@@ -200,9 +185,9 @@ extern "C" void app_main()
     display.deepSleep();
   }
 
-  notifications.add("Quite short test message 1");
-  notifications.add("Quite loooooooooooooooooooooooong test message 2");
-  screen = NOTIFICATION_SCREEN;
+  // notifications.add("Довольно короткое сообщение №1");
+  // notifications.add("Quite short test message 2\nwith line breaks и т.д. и т.р. and so on");
+  // screen = NOTIFICATION_SCREEN;
   
   ESP_LOGI(TAG, "Battery voltage: %d", get_battery_millivolts());
   

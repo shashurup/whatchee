@@ -409,21 +409,28 @@ void parse_accumulated() {
     }
     }
   }
-  os_mbuf_free_chain(accumulator.data);
 }
   
 void accumulate(os_mbuf* buf) {
   if ((buf->om_data[0] == 0xab || buf->om_data[0] == 0xea) &&
       (buf->om_data[3] == 0xfe || buf->om_data[3] == 0xff)) {
-    ESP_LOGI(TAG, "New packet, %u", os_mbuf_len(buf));
     accumulator.length = buf->om_data[1] * 256 + buf->om_data[2] + 3;
+    accumulator.data = buf;
+    uint16_t received = os_mbuf_len(buf);
+    ESP_LOGI(TAG, "New packet, %u", received);
+    if (accumulator.length <= received) {
+      parse_accumulated();
+      return;
+    }
     accumulator.data = os_mbuf_dup(buf);
   } else {
     ESP_LOGI(TAG, "Add packet, %u", os_mbuf_len(buf));
     os_mbuf_appendfrom(accumulator.data, buf, 1, os_mbuf_len(buf) - 1);
+    if (accumulator.length <= OS_MBUF_PKTLEN(accumulator.data)) {
+      parse_accumulated();
+      os_mbuf_free_chain(accumulator.data);
+    }
   }
-  if (accumulator.length <= OS_MBUF_PKTLEN(accumulator.data))
-    parse_accumulated();
 }
 
 static int characteristic_access(uint16_t conn_handle, uint16_t attr_handle,

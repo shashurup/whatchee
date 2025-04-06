@@ -5,4 +5,4 @@ dependencies:
   Adafruit-GFX:
     git: git@github.com:martinberlin/Adafruit-GFX-Library-ESP-IDF.git
   OpenFontRender:
-    git: git@github.com:Bodmer/OpenFontRender.git
+    git: git@github.com:shashurup/OpenFontRender.git
