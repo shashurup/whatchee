@@ -19,4 +19,5 @@ struct NotificationBuffer {
 class MyFontRender: public virtual OpenFontRender {
  public:
   void drawStringBreakLines(const char* subj, int32_t x, int32_t y, uint32_t width, uint32_t height);
+  void drawStringCentered(const char* subj, int32_t y, uint32_t width);
 };

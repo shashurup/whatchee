@@ -93,3 +93,9 @@ void MyFontRender::drawStringBreakLines(const char* subj, int32_t x, int32_t y,
   }
   drawString(base, x, y, getFontColor(), getBackgroundColor());
 }
+
+void MyFontRender::drawStringCentered(const char* subj, int32_t y, uint32_t width) {
+  uint32_t subj_width = getTextWidth(subj);
+  uint32_t x = (int32_t) (width - subj_width) / 2;
+  drawString(subj, x, y, getFontColor(), getBackgroundColor());
+}

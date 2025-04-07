@@ -47,40 +47,29 @@ void draw_main_screen(tm* time, uint8_t battery, bool refresh) {
   char hour_min[6];
   sprintf(hour_min, "%02d:%02d", time->tm_hour, time->tm_min);
   font_renderer.setFontSize(64);
-  uint32_t hm_width = font_renderer.getTextWidth(hour_min);
-  uint32_t hm_height = font_renderer.getTextHeight(hour_min);
-  ESP_LOGI(TAG, "hm_width: %lu, hm_height: %lu", hm_width, hm_height);
-  uint32_t hm_x = (int32_t) (GDEH0154D67_WIDTH - hm_width) / 2;
+  uint32_t hm_h = font_renderer.getTextHeight(hour_min);
   uint32_t hm_y = 40;
-  font_renderer.drawString(hour_min, hm_x, hm_y, 0, 0xffff);
+  font_renderer.drawStringCentered(hour_min, hm_y, GDEH0154D67_WIDTH);
 
   char day_month[11];
   strftime(day_month, 11, "%a %e %b", time);
   font_renderer.setFontSize(32);
-  uint32_t dm_width = font_renderer.getTextWidth(day_month);
-  uint32_t dm_height = font_renderer.getTextHeight(day_month);
-  font_renderer.drawString(day_month,
-                           (int32_t)(200 - dm_width) / 2,
-                           60 + hm_height,
-                           0, 0xffff);
+  uint32_t dm_h = font_renderer.getTextHeight(day_month);
+  font_renderer.drawStringCentered(day_month, 60 + hm_h, GDEH0154D67_WIDTH);
 
-  font_renderer.setCursor(20, 60 + hm_height + 15 + dm_height);
+  font_renderer.setCursor(20, 60 + hm_h + 15 + dm_h);
   font_renderer.setFontSize(24);
-  font_renderer.printf("%u", battery);
-  if (refresh)
+  font_renderer.printf("  %u", battery);
+  if (refresh || display_time.tm_mday != time->tm_mday)
     display.update();
   else {
-    // uint32_t upd_x = 0;
-    // uint32_t upd_y = 0;
-    // uint32_t upd_w = GDEH0154D67_WIDTH;
-    // uint32_t upd_h = GDEH0154D67_HEIGHT;
     // only last digit by defalt
-    // uint32_t upd_x = hm_x + hm_width * 3 / 4;
-    uint32_t upd_x = hm_x + hm_width * 3 / 4 + 5;
+    // TODO update only last digit
+    uint32_t upd_x = GDEH0154D67_WIDTH / 2;
+    uint32_t upd_w = GDEH0154D67_WIDTH / 2;
     uint32_t upd_y = hm_y;
-    uint32_t upd_w = hm_width / 4;
-    // uint32_t upd_h = hm_height;
-    uint32_t upd_h = hm_height + 15;
+    // add 15 pixel, for some reason lower part doesn't update
+    uint32_t upd_h = hm_h + 15;
     if (display_time.tm_hour != time->tm_hour) {
       // the whole screen each hour
       upd_x = 0;
@@ -89,9 +78,8 @@ void draw_main_screen(tm* time, uint8_t battery, bool refresh) {
       upd_h = GDEH0154D67_HEIGHT;
     } else if (display_time.tm_min / 10 != time->tm_min / 10) {
       // last two digits every 10 minutes
-      upd_x = hm_x + hm_width / 2;
-      // upd_w = hm_width / 2;
-      upd_w = hm_width / 2 + 5;
+      upd_x = GDEH0154D67_WIDTH / 2;
+      upd_w = GDEH0154D67_WIDTH / 2;
     }
     ESP_LOGI(TAG, "upd_x: %lu, upd_y: %lu, upd_w: %lu, upd_h: %lu",
              upd_x, upd_y, upd_w, upd_h);
