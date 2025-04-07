@@ -1,19 +1,41 @@
 #pragma once
 
 #include <OpenFontRender.h>
-#include <vector>
+#include <deque>
+#include <string>
 
-const unsigned NOTIFICATIONS_BUFFER_SIZE = 2048;
+const int NOTIFICATION_LIMIT = 8;
 
 struct NotificationBuffer {
-  char* current;
-  char* top;
-  char buffer[NOTIFICATIONS_BUFFER_SIZE];
+  std::deque<std::string> store;
+  int current = 0;
 
-  void add(const char* notification);
-  void clear();
-  void prev();
-  void next();
+  const char* get_current() {
+    if (store.empty())
+      return 0;
+    return store[current].c_str();
+  }
+  
+  void add(const char* notification) {
+    store.push_back(notification);
+    while (store.size() > NOTIFICATION_LIMIT)
+      store.pop_front();
+    current = store.size() - 1;
+  }
+
+  void clear() {
+    store.clear();
+  }
+
+  void prev() {
+    if (current-- == 0)
+      current = store.size() - 1;
+  }
+
+  void next() {
+    if (++current == store.size())
+      current = 0;
+  }
 };
 
 class MyFontRender: public virtual OpenFontRender {

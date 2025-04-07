@@ -3,54 +3,6 @@
 #include <string>
 #include <vector>
 
-
-void NotificationBuffer::add(const char* notification) {
-  if (!top)
-    top = buffer;
-  size_t len = strlen(notification);
-  const char* end = buffer + NOTIFICATIONS_BUFFER_SIZE;
-  if (top + len + 1 > end) {
-    for (char* c = top; c < end; c++)
-      *c = 0;
-    top = buffer;
-  }
-  bool overlap = top[len];
-  current = strcpy(top, notification);
-  top += len + 1;
-  if (overlap)
-    for (char* c = top; *c && c < end; c++)
-      *c = 0;
-}
-
-void NotificationBuffer::clear() {
-  current = 0;
-  top = buffer;
-}
-
-void NotificationBuffer::prev() {
-  if (!current)
-    return;
-  char *c = current;
-  if (c == buffer)
-    c = buffer + NOTIFICATIONS_BUFFER_SIZE - 1;
-  for (; !*c && c >= buffer; --c);
-  for (; *c && c >= buffer; --c);
-  current = c;
-}
-
-void NotificationBuffer::next() {
-  if (!current)
-    return;
-  const char* end = buffer + NOTIFICATIONS_BUFFER_SIZE;
-  char *c = current;
-  for (; *c && c < end; ++c);
-  for (; !*c && c < end; ++c);
-  if (c < end)
-    current = c;
-  else
-    current = buffer;
-}
-
 struct Context {
   std::vector<unsigned> breaks;
   long offset = 0;

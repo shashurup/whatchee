@@ -32,7 +32,7 @@ NotificationBuffer notifications;
 int time_sync_day = 0;
 struct tm display_time;
 int screen = MAIN_SCREEN;
-char* displayed_notification = 0;
+const char* displayed_notification = 0;
 
 
 void sync_current_time(tm* subj) {
@@ -91,7 +91,7 @@ void draw_notifications() {
   display.fillScreen(EPD_WHITE);
   font_renderer.setCursor(5, 5);
   font_renderer.setFontSize(20);
-  font_renderer.drawStringBreakLines(notifications.current,
+  font_renderer.drawStringBreakLines(notifications.get_current(),
                                      5, 5, 190, 190);
   display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
 }
@@ -115,11 +115,11 @@ void new_notification(Notification* subj) {
 
 void idle_tasks() {
   if (screen == NOTIFICATION_SCREEN &&
-      notifications.current &&
-      notifications.current != displayed_notification) {
+      notifications.get_current() &&
+      notifications.get_current() != displayed_notification) {
     draw_notifications();
     display.deepSleep();
-    displayed_notification = notifications.current;
+    displayed_notification = notifications.get_current();
     display_time = {};
   }
   else if (screen == MAIN_SCREEN) {
