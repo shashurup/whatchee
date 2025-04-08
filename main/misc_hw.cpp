@@ -34,7 +34,34 @@ void vibrate(uint8_t intervalMs, uint8_t length) {
   }
 }
 
-int get_battery_millivolts() {
+// millivolts
+#define BATTERY_MAX 2900
+#define BATTERY_MIN 2100
+
+void Battery::measure() {
+  int new_voltage = get_voltage();
+  if (new_voltage > prev_voltage) {
+    start_voltage = new_voltage;
+    start_time = time(0);
+    discharge_rate = 0;
+  } else {
+    time_t new_time = time(0);
+    if ((new_time - start_time) > 3600) {
+      discharge_rate = (start_voltage - new_voltage) * 100 * 24 * 3600 /
+        ((new_time - start_time) * (BATTERY_MAX - BATTERY_MIN));
+      ESP_LOGI(__FILE__, "Discharge rate: %u", discharge_rate);
+    }
+  }
+  prev_voltage = new_voltage;
+}
+
+uint8_t Battery::get_level() {
+  int millivolts = get_voltage();
+  uint8_t level = (millivolts - BATTERY_MIN) * 100 / (BATTERY_MAX - BATTERY_MIN);
+  return level > 100 ? 100 : level;
+}
+
+int Battery::get_voltage() {
   int battery_voltage;
   // GPIO_34 corresponds to ADC1 channel 6
   ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, ADC_CHANNEL_6, &battery_voltage));
@@ -44,13 +71,8 @@ int get_battery_millivolts() {
   return battery_voltage * 2 * 2450 / 4096;
 }
 
-#define BATTERY_MAX 2900
-#define BATTERY_MIN 2100
-
-uint8_t get_battery_level() {
-  int mvs = get_battery_millivolts();
-  uint8_t level = (mvs - BATTERY_MIN) * 100 / (BATTERY_MAX - BATTERY_MIN);
-  return level > 100 ? 100 : level;
+uint8_t Battery::get_discharge_rate() {
+  return discharge_rate;
 }
 
 void on_debounce_timer(TimerHandle_t timer) {

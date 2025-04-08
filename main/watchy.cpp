@@ -33,6 +33,7 @@ int time_sync_day = 0;
 struct tm display_time;
 int screen = MAIN_SCREEN;
 const char* displayed_notification = 0;
+Battery battery;
 
 
 void sync_current_time(tm* subj) {
@@ -42,7 +43,7 @@ void sync_current_time(tm* subj) {
   }
 }
 
-void draw_main_screen(tm* time, uint8_t battery, bool refresh) {
+void draw_main_screen(tm* time, bool refresh) {
   display.fillScreen(EPD_WHITE);
   char hour_min[6];
   sprintf(hour_min, "%02d:%02d", time->tm_hour, time->tm_min);
@@ -59,7 +60,7 @@ void draw_main_screen(tm* time, uint8_t battery, bool refresh) {
 
   font_renderer.setCursor(20, 60 + hm_h + 15 + dm_h);
   font_renderer.setFontSize(24);
-  font_renderer.printf("  %u", battery);
+  font_renderer.printf("  %u (%u)", battery.get_level(), battery.get_discharge_rate());
   if (refresh || display_time.tm_mday != time->tm_mday)
     display.update();
   else {
@@ -128,15 +129,16 @@ void idle_tasks() {
     struct tm now;
     bool valid = get_rtc_time(&now);
     if (valid && now.tm_hour != display_time.tm_hour) {
-      send_battery(get_battery_level());
+      send_battery(battery.get_level());
     }
     if (valid && now.tm_min != display_time.tm_min) {
       ESP_LOGI(TAG, "Updating time");
-      draw_main_screen(&now, get_battery_level(), false);
+      draw_main_screen(&now, false);
       display_time = now;
       display.deepSleep();
     }
   }
+  battery.measure();
 }
 
 void setup_pm() {
@@ -171,7 +173,7 @@ extern "C" void app_main()
   font_renderer.setFontColor(0);
 
   if (valid) {
-    draw_main_screen(&display_time, get_battery_level(), true);
+    draw_main_screen(&display_time, true);
     display.deepSleep();
   }
 
@@ -179,7 +181,7 @@ extern "C" void app_main()
   // notifications.add("Quite short test message 2\nwith line breaks и т.д. и т.р. and so on");
   // screen = NOTIFICATION_SCREEN;
   
-  ESP_LOGI(TAG, "Battery voltage: %d", get_battery_millivolts());
+  ESP_LOGI(TAG, "Battery voltage: %d", battery.get_voltage());
   
   while(true) {
     struct Message msg;
@@ -212,7 +214,7 @@ extern "C" void app_main()
           break;
         case CLIENT_SUBSCRIBED:
           send_info();
-          send_battery(get_battery_level());
+          send_battery(battery.get_level());
           break;
         case CLIENT_TIME: {
           tm* t = (tm *)msg.data;

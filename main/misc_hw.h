@@ -1,5 +1,4 @@
-#ifndef _MISCHW_H
-#define _MISCHW_H
+#pragma once
 
 #include "main_queue.h"
 #include <inttypes.h>
@@ -15,10 +14,6 @@
 
 void vibrate(uint8_t intervalMs, uint8_t length);
 
-uint8_t get_battery_level();
-
-int get_battery_millivolts();
-
 void setup_misc_hw();
 
 bool handle_misc_hw_events(Message msg);
@@ -27,4 +22,15 @@ bool get_rtc_time(tm* t);
 
 void set_rtc_time(tm* t);
 
-#endif /* _RTCI2C_H */
+class Battery {
+ private:
+  int start_voltage;
+  time_t start_time;
+  int prev_voltage = 0;
+  uint8_t discharge_rate = 0;
+ public:
+  void measure();
+  uint8_t get_level();
+  int get_voltage();
+  uint8_t get_discharge_rate();
+};
