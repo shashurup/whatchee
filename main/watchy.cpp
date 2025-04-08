@@ -120,7 +120,8 @@ void idle_tasks() {
     draw_notifications();
     display.deepSleep();
     displayed_notification = notifications.get_current();
-    display_time = {};
+    // provoke whole screen update when back to main screen
+    display_time.tm_hour = -1;
   }
   else if (screen == MAIN_SCREEN) {
     struct tm now;
