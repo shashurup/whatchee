@@ -106,7 +106,8 @@ void preprocess_notification(Notification* subj) {
 }
 
 void new_notification(Notification* subj) {
-  ESP_LOGI(TAG, "New notification: %s", subj->text);
+  ESP_LOGI(TAG, "New notification, icon: %u, state: %u, %s",
+           subj->icon, subj->state, subj->text);
   preprocess_notification(subj);
   notifications.add(subj->text);
   delete subj;
