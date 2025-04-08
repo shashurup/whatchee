@@ -15,7 +15,7 @@
 #define BUTTON_UP_GPIO GPIO_NUM_35
 #define BUTTON_DOWN_GPIO GPIO_NUM_4
 #define ALL_BUTTONS ((1ULL << BUTTON_MENU_GPIO) | (1ULL << BUTTON_BACK_GPIO) | (1ULL << BUTTON_UP_GPIO) | (1ULL << BUTTON_DOWN_GPIO))
-#define BOUNCE_TIMEOUT 64
+#define BOUNCE_TIMEOUT 32
 
 
 adc_oneshot_unit_handle_t adc_handle; 
