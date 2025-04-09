@@ -39,20 +39,21 @@ void vibrate(uint8_t intervalMs, uint8_t length) {
 #define BATTERY_MIN 2100
 
 void Battery::measure() {
-  int new_voltage = get_voltage();
-  if (new_voltage > prev_voltage) {
-    start_voltage = new_voltage;
-    start_time = time(0);
-    discharge_rate = 0;
-  } else {
-    time_t new_time = time(0);
-    if ((new_time - start_time) > 3600) {
+  time_t new_time = time(0);
+  if ((new_time - prev_time) > 60 * 60 * 3) {
+    int new_voltage = get_voltage();
+    if (new_voltage > prev_voltage) {
+      start_voltage = new_voltage;
+      start_time = time(0);
+      discharge_rate = 0;
+    } else {
       discharge_rate = (start_voltage - new_voltage) * 100 * 24 * 3600 /
         ((new_time - start_time) * (BATTERY_MAX - BATTERY_MIN));
       ESP_LOGI(__FILE__, "Discharge rate: %u", discharge_rate);
     }
+    prev_voltage = new_voltage;
+    prev_time = new_time;
   }
-  prev_voltage = new_voltage;
 }
 
 uint8_t Battery::get_level() {

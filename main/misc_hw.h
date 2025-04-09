@@ -27,6 +27,7 @@ class Battery {
   int start_voltage;
   time_t start_time;
   int prev_voltage = 0;
+  time_t prev_time = 0;
   uint8_t discharge_rate = 0;
  public:
   void measure();

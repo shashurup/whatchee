@@ -116,6 +116,7 @@ void new_notification(Notification* subj) {
 }
 
 void idle_tasks() {
+  battery.measure();
   if (screen == NOTIFICATION_SCREEN &&
       notifications.get_current() &&
       notifications.get_current() != displayed_notification) {
@@ -138,7 +139,6 @@ void idle_tasks() {
       display.deepSleep();
     }
   }
-  battery.measure();
 }
 
 void setup_pm() {
