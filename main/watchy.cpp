@@ -228,6 +228,9 @@ extern "C" void app_main()
           new_notification((Notification *)msg.data);
           screen = NOTIFICATION_SCREEN;
           break;
+        case CLIENT_FIND:
+          vibrate(50, 10);
+          break;
         }
       }
       idle_tasks();

@@ -368,6 +368,15 @@ int gap_init(const char* name) {
     return rc;
 }
 
+void dump_mbuf_meta(os_mbuf* mbuf) {
+  ESP_LOGI(TAG, "mbuf, len=%u", mbuf->om_len);
+  ESP_LOGI(TAG, "pool, name=%s, block_size=%lu, blocks=%u, free=%u",
+           mbuf->om_omp->omp_pool->name,
+           mbuf->om_omp->omp_pool->mp_block_size,
+           mbuf->om_omp->omp_pool->mp_num_blocks,
+           mbuf->om_omp->omp_pool->mp_num_free);
+}
+
 struct Accumulator {
   uint16_t length;
   os_mbuf* data;
@@ -387,6 +396,11 @@ void parse_accumulated() {
       nt->state = accumulator.data->om_data[7];
       os_mbuf_copydata(accumulator.data, 8, text_len, nt->text);
       struct Message msg = {CLIENT_NOTIFICATION, nt};
+      xQueueSend(main_queue, &msg, 0);
+      break;
+    }
+    case 0x71: {
+      struct Message msg = {CLIENT_FIND, 0};
       xQueueSend(main_queue, &msg, 0);
       break;
     }
@@ -410,7 +424,7 @@ void parse_accumulated() {
     }
   }
 }
-  
+
 void accumulate(os_mbuf* buf) {
   if ((buf->om_data[0] == 0xab || buf->om_data[0] == 0xea) &&
       (buf->om_data[3] == 0xfe || buf->om_data[3] == 0xff)) {
@@ -424,7 +438,7 @@ void accumulate(os_mbuf* buf) {
     }
     accumulator.data = os_mbuf_dup(buf);
   } else {
-    ESP_LOGI(TAG, "Add packet, %u", os_mbuf_len(buf));
+    ESP_LOGI(TAG, "Packet fragment, %u", os_mbuf_len(buf));
     os_mbuf_appendfrom(accumulator.data, buf, 1, os_mbuf_len(buf) - 1);
     if (accumulator.length <= OS_MBUF_PKTLEN(accumulator.data)) {
       parse_accumulated();
@@ -451,6 +465,7 @@ static int characteristic_access(uint16_t conn_handle, uint16_t attr_handle,
         if (attr_handle == rx_char_handle) {
           ESP_LOGD(TAG, "write the characteristic");
           ESP_LOGD(TAG, "%u bytes received", os_mbuf_len(ctxt->om));
+          // dump_mbuf_meta(ctxt->om);
           accumulate(ctxt->om);
           return rc;
         }
