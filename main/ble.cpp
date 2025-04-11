@@ -201,7 +201,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
     switch (event->type) {
 
     /* Connect event */
-    case BLE_GAP_EVENT_CONNECT:
+    case BLE_GAP_EVENT_CONNECT: {
         /* A new connection was established or a connection attempt failed. */
         ESP_LOGI(TAG, "connection %s; status=%d",
                  event->connect.status == 0 ? "established" : "failed",
@@ -236,22 +236,31 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
                     rc);
                 return rc;
             }
+
+            struct Message msg = {CLIENT_CONNECTED, 0};
+            xQueueSend(main_queue, &msg, 0);
+
         }
         /* Connection failed, restart advertising */
         else {
             start_advertising();
         }
         return rc;
+    }
 
     /* Disconnect event */
-    case BLE_GAP_EVENT_DISCONNECT:
+    case BLE_GAP_EVENT_DISCONNECT: {
         /* A connection was terminated, print connection descriptor */
         ESP_LOGI(TAG, "disconnected from peer; reason=%d",
                  event->disconnect.reason);
 
+        struct Message msg = {CLIENT_DISCONNECTED, 0};
+        xQueueSend(main_queue, &msg, 0);
+
         /* Restart advertising */
         start_advertising();
         return rc;
+    }
 
     /* Connection parameters update event */
     case BLE_GAP_EVENT_CONN_UPDATE:

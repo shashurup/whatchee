@@ -8,6 +8,8 @@
 #define CLIENT_NOTIFICATION 12u
 #define CLIENT_TIME 13u
 #define CLIENT_FIND 14u
+#define CLIENT_CONNECTED 15u
+#define CLIENT_DISCONNECTED 16u
 
 struct Notification {
   uint8_t icon;

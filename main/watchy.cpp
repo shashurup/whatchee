@@ -34,6 +34,9 @@ struct tm display_time;
 int screen = MAIN_SCREEN;
 const char* displayed_notification = 0;
 Battery battery;
+bool connected = false;
+bool prev_connected = true;
+unsigned disconnect_count = 0;
 
 
 void sync_current_time(tm* subj) {
@@ -62,7 +65,13 @@ void draw_main_screen(tm* time, bool valid, bool refresh) {
 
   font_renderer.setCursor(20, 60 + hm_h + 15 + dm_h);
   font_renderer.setFontSize(24);
-  font_renderer.printf("  %u (%u)", battery.get_level(), battery.get_discharge_rate());
+  if (connected)
+    font_renderer.printf("  %u (%u)",
+                         battery.get_level(),
+                         battery.get_discharge_rate());
+  else
+    font_renderer.printf("not connected");
+
   if (refresh || display_time.tm_mday != time->tm_mday)
     display.update();
   else {
@@ -73,7 +82,8 @@ void draw_main_screen(tm* time, bool valid, bool refresh) {
     uint32_t upd_y = hm_y;
     // add 15 pixel, for some reason lower part doesn't update
     uint32_t upd_h = hm_h + 15;
-    if (display_time.tm_hour != time->tm_hour) {
+    if (display_time.tm_hour != time->tm_hour ||
+        prev_connected != connected) {
       // the whole screen each hour
       upd_x = 0;
       upd_y = 0;
@@ -250,12 +260,29 @@ extern "C" void app_main()
           delete t;
           break;
         }
-        case CLIENT_NOTIFICATION:
-          new_notification((Notification *)msg.data);
+        case CLIENT_NOTIFICATION: {
+          Notification *notif = (Notification *)msg.data;
+          if (notif->icon == 1) {
+            //incoming call
+          } else if (notif->icon == 2) {
+            // cancel incomint call
+            break; // its empty no need to display
+          }
+          new_notification(notif);
           screen = NOTIFICATION_SCREEN;
           break;
+        }
         case CLIENT_FIND:
           vibrate(50, 10);
+          break;
+        case CLIENT_CONNECTED:
+          prev_connected = connected;
+          connected = true;
+          break;
+        case CLIENT_DISCONNECTED:
+          prev_connected = connected;
+          connected = false;
+          ++disconnect_count;
           break;
         }
       }
