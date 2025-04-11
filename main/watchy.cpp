@@ -88,12 +88,38 @@ void draw_main_screen(tm* time, bool refresh) {
   }
 }
 
+// find from 4 up to 6 consequtive digits
+// treat them like 2FA code
+std::string find_code(const char* subj) {
+  std::string result;
+  for (const char* p = subj; *p; ++p) {
+    if (isdigit(*p))
+      result += *p;
+    else {
+      if (result.size() <= 6 && result.size() >= 4)
+        return result;
+      result.clear();
+    }
+  }
+  if (result.size() < 4 || result.size() > 6)
+    result.clear();
+  return result;
+}
+
 void draw_notifications() {
   display.fillScreen(EPD_WHITE);
-  font_renderer.setCursor(5, 5);
+  const char* notification = notifications.get_current();
+  auto code = find_code(notification);
+  uint32_t y = 5;
+  if (!code.empty()) {
+    font_renderer.setFontSize(48);
+    uint32_t h = font_renderer.getTextHeight(code.c_str());
+    font_renderer.drawStringCentered(code.c_str(), y, GDEH0154D67_WIDTH);
+    y += h + 5;
+  }
   font_renderer.setFontSize(20);
-  font_renderer.drawStringBreakLines(notifications.get_current(),
-                                     5, 5, 190, 190);
+  font_renderer.drawStringBreakLines(notification,
+                                     5, y, 190, GDEH0154D67_HEIGHT - y - 5);
   display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
 }
 
