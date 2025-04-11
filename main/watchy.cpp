@@ -43,10 +43,11 @@ void sync_current_time(tm* subj) {
   }
 }
 
-void draw_main_screen(tm* time, bool refresh) {
+void draw_main_screen(tm* time, bool valid, bool refresh) {
   display.fillScreen(EPD_WHITE);
-  char hour_min[6];
-  sprintf(hour_min, "%02d:%02d", time->tm_hour, time->tm_min);
+  char hour_min[6] = "--:--";
+  if (valid)
+    sprintf(hour_min, "%02d:%02d", time->tm_hour, time->tm_min);
   font_renderer.setFontSize(64);
   uint32_t hm_h = font_renderer.getTextHeight(hour_min);
   uint32_t hm_y = 40;
@@ -56,7 +57,8 @@ void draw_main_screen(tm* time, bool refresh) {
   strftime(day_month, 11, "%a %e %b", time);
   font_renderer.setFontSize(32);
   uint32_t dm_h = font_renderer.getTextHeight(day_month);
-  font_renderer.drawStringCentered(day_month, 60 + hm_h, GDEH0154D67_WIDTH);
+  if (valid)
+    font_renderer.drawStringCentered(day_month, 60 + hm_h, GDEH0154D67_WIDTH);
 
   font_renderer.setCursor(20, 60 + hm_h + 15 + dm_h);
   font_renderer.setFontSize(24);
@@ -158,9 +160,9 @@ void idle_tasks() {
     if (valid && now.tm_hour != display_time.tm_hour) {
       send_battery(battery.get_level());
     }
-    if (valid && now.tm_min != display_time.tm_min) {
+    if (now.tm_min != display_time.tm_min) {
       ESP_LOGI(TAG, "Updating time");
-      draw_main_screen(&now, false);
+      draw_main_screen(&now, valid, false);
       display_time = now;
       display.deepSleep();
     }
@@ -198,10 +200,8 @@ extern "C" void app_main()
   display.init(false);
   font_renderer.setFontColor(0);
 
-  if (valid) {
-    draw_main_screen(&display_time, true);
-    display.deepSleep();
-  }
+  draw_main_screen(&display_time, valid, true);
+  display.deepSleep();
 
   // notifications.add("Довольно короткое сообщение №1");
   // notifications.add("Quite short test message 2\nwith line breaks и т.д. и т.р. and so on");
