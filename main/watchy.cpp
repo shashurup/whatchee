@@ -144,13 +144,29 @@ void preprocess_notification(Notification* subj) {
   }
 }
 
-void new_notification(Notification* subj) {
+bool notification_is_empty(Notification* subj) {
+  for (const char* p = subj->text; *p; ++p)
+    if (!isspace(*p))
+      return false;
+  return true;
+}
+
+bool handle_notification(Notification* subj) {
   ESP_LOGI(TAG, "New notification, icon: %u, state: %u, %s",
            subj->icon, subj->state, subj->text);
+  if (subj->icon == 1) {
+    //incoming call
+  } else if (subj->icon == 2) {
+    // cancel incomint call
+    return false; // its empty no need to display
+  }
   preprocess_notification(subj);
-  notifications.add(subj->text);
-  delete subj;
-  vibrate(75, 6);
+  if (!notification_is_empty(subj)) {
+    notifications.add(subj->text);
+    vibrate(75, 6);
+    return true;
+  }
+  return false;
 }
 
 void idle_tasks() {
@@ -262,14 +278,9 @@ extern "C" void app_main()
         }
         case CLIENT_NOTIFICATION: {
           Notification *notif = (Notification *)msg.data;
-          if (notif->icon == 1) {
-            //incoming call
-          } else if (notif->icon == 2) {
-            // cancel incomint call
-            break; // its empty no need to display
-          }
-          new_notification(notif);
-          screen = NOTIFICATION_SCREEN;
+          if (handle_notification(notif))
+            screen = NOTIFICATION_SCREEN;
+          delete notif;
           break;
         }
         case CLIENT_FIND:
