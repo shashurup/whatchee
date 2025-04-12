@@ -270,7 +270,7 @@ extern "C" void app_main()
           break;
         case CLIENT_TIME: {
           tm* t = (tm *)msg.data;
-          ESP_LOGD(TAG, "Got time: %u-%u-%u %u:%u:%u",
+          ESP_LOGI(TAG, "Got time: %u-%u-%u %u:%u:%u",
                    t->tm_year, t->tm_mon, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
           sync_current_time(t);
           delete t;

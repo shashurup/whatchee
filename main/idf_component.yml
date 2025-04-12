@@ -7,3 +7,5 @@ dependencies:
   OpenFontRender:
     # git: git@github.com:shashurup/OpenFontRender.git
     path: ../../OpenFontRender
+  pcf8563:
+    git: git@github.com:tuupola/pcf8563.git

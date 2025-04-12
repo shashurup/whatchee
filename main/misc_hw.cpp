@@ -8,6 +8,7 @@
 #include <esp_adc/adc_oneshot.h>
 #include <driver/i2c_master.h>
 #include <pcf8563.h>
+#include <cstring>
 
 #define VIB_MOTOR_PIN GPIO_NUM_13
 #define BUTTON_MENU_GPIO GPIO_NUM_26
@@ -117,29 +118,57 @@ bool handle_misc_hw_events(Message msg) {
   return false;
 }
 
-i2c_dev_t i2c_dev = {
-  .port = I2C_NUM_0,
-  .cfg = {
-    .mode = I2C_MODE_MASTER,
+i2c_master_bus_config_t i2c_mst_config = {
+    .i2c_port = I2C_NUM_0,
     .sda_io_num = GPIO_NUM_21,
     .scl_io_num = GPIO_NUM_22,
-    .sda_pullup_en = 0,
-    .scl_pullup_en = 0,
-    .clk_flags = 0
-  },
-  .addr = 0x51,
-  .mutex = 0,
-  .timeout_ticks = 0
+    .clk_source = I2C_CLK_SRC_DEFAULT,
+    .glitch_ignore_cnt = 7,
+    .intr_priority = 0,
+    .trans_queue_depth = 0,
+    .flags = {.enable_internal_pullup = 1,
+              .allow_pd = 0}
+};
+i2c_master_bus_handle_t bus_handle;
+
+i2c_device_config_t dev_cfg = {
+    .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+    .device_address = 0x51,
+    .scl_speed_hz = 100000,
+    .scl_wait_us = 0,
+    .flags = {.disable_ack_check = 1}
 };
 
+i2c_master_dev_handle_t dev_handle;
+
+int32_t i2c_read(void *handle, uint8_t address, uint8_t reg, uint8_t *buffer, uint16_t size) {
+  return i2c_master_transmit_receive(dev_handle, &reg, 1, buffer, size, -1);
+}
+
+int32_t i2c_write(void *handle, uint8_t address, uint8_t reg, const uint8_t *buffer, uint16_t size) {
+  uint8_t* buf = (uint8_t *)malloc(size + 1);
+  buf[0] = reg;
+  memcpy(buf + 1, buffer, size);
+  int32_t err = i2c_master_transmit(dev_handle, buf, size + 1, -1);
+  free(buf);
+  return err;
+}
+
+pcf8563_t pcf = {.read = &i2c_read,
+                 .write = &i2c_write,
+                 .handle = 0};
+
 bool get_rtc_time(tm* t) {
-  bool valid = false;
-  pcf8563_get_time(&i2c_dev, t, &valid);
-  return valid;
+  if (int err = pcf8563_read(&pcf, t)) {
+    ESP_LOGE(__FILE__, "Error getting RTC time %d", err);
+    return false;
+  }
+  return true;
 }
 
 void set_rtc_time(tm* t) {
-  pcf8563_set_time(&i2c_dev, t);
+  if (int err = pcf8563_write(&pcf, t))
+    ESP_LOGE(__FILE__, "Error setting RTC time %d", err);
 }
 
 void setup_battery_adc() {
@@ -170,11 +199,15 @@ void setup_buttons() {
 }
 
 void setup_rtc() {
-  // TODO find modern library or just copy its code
-  // ESP-IDF-LIB uses old i2c driver
-  ESP_ERROR_CHECK(i2cdev_init());
-  ESP_ERROR_CHECK(i2c_dev_create_mutex(&i2c_dev));
-  ESP_ERROR_CHECK(pcf8563_init_desc(&i2c_dev, I2C_NUM_0, GPIO_NUM_21, GPIO_NUM_22));
+  int err = i2c_new_master_bus(&i2c_mst_config, &bus_handle);
+  if (err)
+    ESP_LOGE(__FILE__, "Master bus init error, %d", err);
+  err = i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
+  if (err)
+    ESP_LOGE(__FILE__, "Add i2c device error, %d", err);
+  err = pcf8563_init(&pcf);
+  if (err)
+    ESP_LOGE(__FILE__, "PCF8563 init error, %d", err);
 }
 
 void setup_misc_hw() {
