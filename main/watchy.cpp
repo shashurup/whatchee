@@ -193,6 +193,7 @@ void idle_tasks() {
       display.deepSleep();
     }
   }
+  prev_connected = connected;
 }
 
 void setup_pm() {
