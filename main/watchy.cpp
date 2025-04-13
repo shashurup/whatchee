@@ -17,8 +17,8 @@
 #include "main_queue.h"
 #include "ble.h"
 #include "misc_hw.h"
-#include "binaryttf.h"
 #include "utils.h"
+#include "dejavuttf.h"
 
 static const char* TAG = "main";
 
@@ -37,6 +37,7 @@ Battery battery;
 bool connected = false;
 bool prev_connected = true;
 unsigned disconnect_count = 0;
+bool ringing = false;
 
 
 void sync_current_time(tm* subj) {
@@ -127,7 +128,7 @@ void draw_notifications() {
     font_renderer.setFontSize(48);
     uint32_t h = font_renderer.getTextHeight(code.c_str());
     font_renderer.drawStringCentered(code.c_str(), y, GDEH0154D67_WIDTH);
-    y += h + 5;
+    y += h + 10;
   }
   font_renderer.setFontSize(20);
   font_renderer.drawStringBreakLines(notification,
@@ -155,9 +156,13 @@ bool handle_notification(Notification* subj) {
   ESP_LOGI(TAG, "New notification, icon: %u, state: %u, %s",
            subj->icon, subj->state, subj->text);
   if (subj->icon == 1) {
-    //incoming call
+    ringing = true;
+    notifications.add(subj->text);
+    // TODO find better solution
+    vibrate(100, 10);
+    return true;
   } else if (subj->icon == 2) {
-    // cancel incomint call
+    ringing = false;
     return false; // its empty no need to display
   }
   preprocess_notification(subj);
@@ -194,6 +199,11 @@ void idle_tasks() {
     }
   }
   prev_connected = connected;
+  if (ringing) {
+    // TODO find better solution
+    vibrate(100, 20);
+    ringing = false;
+  }
 }
 
 void setup_pm() {
@@ -222,7 +232,7 @@ extern "C" void app_main()
            display_time.tm_hour, display_time.tm_min, display_time.tm_sec, valid);
 
   font_renderer.setDrawer(display);
-  if (font_renderer.loadFont(binaryttf, sizeof(binaryttf)))
+  if (font_renderer.loadFont(dejavu_ttf, sizeof(dejavu_ttf)))
     ESP_LOGE(TAG, "Error loading font");
   display.init(false);
   font_renderer.setFontColor(0);
