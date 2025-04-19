@@ -4,8 +4,5 @@ dependencies:
     path: ../../calepd
   Adafruit-GFX:
     git: git@github.com:martinberlin/Adafruit-GFX-Library-ESP-IDF.git
-  OpenFontRender:
-    # git: git@github.com:shashurup/OpenFontRender.git
-    path: ../../OpenFontRender
   pcf8563:
     git: git@github.com:tuupola/pcf8563.git

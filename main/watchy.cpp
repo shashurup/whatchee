@@ -10,15 +10,17 @@
 #include "freertos/task.h"
 #include <epdspi.h>
 #include <gdeh0154d67.h>
-#include <Fonts/FreeSans12pt7b.h>
-#include <Fonts/FreeMonoBold24pt7b.h>
 #include <time.h>
 
 #include "main_queue.h"
 #include "ble.h"
 #include "misc_hw.h"
 #include "utils.h"
-#include "dejavuttf.h"
+#include "typography.h"
+#include "ter_x20b_pcf20pt.h"
+#include "ter_x32b_pcf32pt.h"
+#include "c509_bold37pt.h"
+#include "c509_bold29pt.h"
 
 static const char* TAG = "main";
 
@@ -27,7 +29,7 @@ static const char* TAG = "main";
 
 EpdSpi io;
 Gdeh0154d67 display(io);
-MyFontRender font_renderer;
+Typography typography(display);
 NotificationBuffer notifications;
 int time_sync_day = 0;
 struct tm display_time;
@@ -52,26 +54,33 @@ void draw_main_screen(tm* time, bool valid, bool refresh) {
   char hour_min[6] = "--:--";
   if (valid)
     sprintf(hour_min, "%02d:%02d", time->tm_hour, time->tm_min);
-  font_renderer.setFontSize(64);
-  uint32_t hm_h = font_renderer.getTextHeight(hour_min);
-  uint32_t hm_y = 40;
-  font_renderer.drawStringCentered(hour_min, hm_y, GDEH0154D67_WIDTH);
+  typography.SetFont(&C059_Bold37pt[0],
+                     sizeof(C059_Bold37pt)/ sizeof(C059_Bold37pt[0]));
+  uint16_t y = 40;
+  uint16_t hm_y = y;
+  uint16_t hm_h = typography.PrintCentered(hour_min, y);
+  y += hm_h;
 
   char day_month[11];
   strftime(day_month, 11, "%a %e %b", time);
-  font_renderer.setFontSize(32);
-  uint32_t dm_h = font_renderer.getTextHeight(day_month);
+  typography.SetFont(&ter_x32b_pcf32pt[0],
+                     sizeof(ter_x32b_pcf32pt) / sizeof(ter_x32b_pcf32pt[0]));
+  y += 12;
   if (valid)
-    font_renderer.drawStringCentered(day_month, 60 + hm_h, GDEH0154D67_WIDTH);
+    y += typography.PrintCentered(day_month, y);
 
-  font_renderer.setCursor(20, 60 + hm_h + 15 + dm_h);
-  font_renderer.setFontSize(24);
-  if (connected)
-    font_renderer.printf("  %u (%u)",
-                         battery.get_level(),
-                         battery.get_discharge_rate());
+  typography.SetFont(&ter_x20b_pcf20pt[0],
+                     sizeof(ter_x20b_pcf20pt) / sizeof(ter_x20b_pcf20pt[0]));
+  y += 20;
+  if (connected) {
+    typography.SetCursor(20, y);
+    char batt[10] = {};
+    sprintf(batt, "%u (%u)",
+            battery.get_level(), battery.get_discharge_rate());
+    typography.Print(batt);
+  }
   else
-    font_renderer.printf("not connected");
+    typography.PrintCentered("disconnected", y);
 
   if (refresh || display_time.tm_mday != time->tm_mday)
     display.update();
@@ -123,16 +132,16 @@ void draw_notifications() {
   display.fillScreen(EPD_WHITE);
   const char* notification = notifications.get_current();
   auto code = find_code(notification);
-  uint32_t y = 5;
+  uint16_t y = 5;
   if (!code.empty()) {
-    font_renderer.setFontSize(48);
-    uint32_t h = font_renderer.getTextHeight(code.c_str());
-    font_renderer.drawStringCentered(code.c_str(), y, GDEH0154D67_WIDTH);
-    y += h + 10;
+    typography.SetFont(&C059_Bold29pt[0],
+                       sizeof(C059_Bold29pt)/ sizeof(C059_Bold29pt[0]));
+    y += typography.PrintCentered(code.c_str(), y);
+    y += 10;
   }
-  font_renderer.setFontSize(20);
-  font_renderer.drawStringBreakLines(notification,
-                                     5, y, 190, GDEH0154D67_HEIGHT - y - 5);
+  typography.SetFont(&ter_x20b_pcf20pt[0],
+                     sizeof(ter_x20b_pcf20pt) / sizeof(ter_x20b_pcf20pt[0]));
+  typography.FitText(notification, 5, y, 190, GDEH0154D67_HEIGHT - y - 5);
   display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
 }
 
@@ -231,16 +240,11 @@ extern "C" void app_main()
            display_time.tm_year, display_time.tm_mon, display_time.tm_mday,
            display_time.tm_hour, display_time.tm_min, display_time.tm_sec, valid);
 
-  font_renderer.setDrawer(display);
-  if (font_renderer.loadFont(dejavu_ttf, sizeof(dejavu_ttf)))
-    ESP_LOGE(TAG, "Error loading font");
   display.init(false);
-  font_renderer.setFontColor(0);
-
   draw_main_screen(&display_time, valid, true);
   display.deepSleep();
 
-  // notifications.add("Довольно короткое сообщение №1");
+  // notifications.add("Довольно короткое сообщение №1 123456 code");
   // notifications.add("Quite short test message 2\nwith line breaks и т.д. и т.р. and so on");
   // screen = NOTIFICATION_SCREEN;
   

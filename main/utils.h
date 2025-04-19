@@ -1,6 +1,5 @@
 #pragma once
 
-#include <OpenFontRender.h>
 #include <deque>
 #include <string>
 
@@ -38,8 +37,5 @@ struct NotificationBuffer {
   }
 };
 
-class MyFontRender: public virtual OpenFontRender {
- public:
-  void drawStringBreakLines(const char* subj, int32_t x, int32_t y, uint32_t width, uint32_t height);
-  void drawStringCentered(const char* subj, int32_t y, uint32_t width);
-};
+const char* next_ut8_symbol(const char* str);
+uint32_t decode_utf8(const char* str);

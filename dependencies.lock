@@ -1,0 +1,34 @@
+dependencies:
+  Adafruit-GFX:
+    component_hash: 941b3f98d7b9c4c4fa6ad73aad7e7aef391103c55f552c98a5e44f814716827a
+    dependencies: []
+    source:
+      git: git@github.com:martinberlin/Adafruit-GFX-Library-ESP-IDF.git
+      path: .
+      type: git
+    version: 543bce4dd06afa406082f4f8dfb09abe4f5a031f
+  calepd:
+    dependencies: []
+    source:
+      path: /home/georgy/d/watchy/calepd
+      type: local
+    version: '*'
+  idf:
+    source:
+      type: idf
+    version: 5.4.0
+  pcf8563:
+    component_hash: ce7c9804c784bb8a276aef1cea2619ccc9800c6ff94c3727e14e14946d91f633
+    dependencies: []
+    source:
+      git: git@github.com:tuupola/pcf8563.git
+      path: .
+      type: git
+    version: 07f60e3282071fe011ba2ffd2989bc03d46f51db
+direct_dependencies:
+- Adafruit-GFX
+- calepd
+- pcf8563
+manifest_hash: 286eee260dd552aeaf0e001bfbac64de92f2b24c86ddec96016281fe4908f203
+target: esp32
+version: 2.0.0
