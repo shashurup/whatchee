@@ -39,8 +39,8 @@ void vibrate(uint8_t intervalMs, uint8_t length) {
 #define BATTERY_MAX 2900
 #define BATTERY_MIN 2100
 
-void Battery::measure() {
-  time_t new_time = time(0);
+void Battery::measure(struct tm* now) {
+  time_t new_time = now ? mktime(now) : time(0);
   if ((new_time - prev_time) > 60 * 60 * 3) {
     int new_voltage = get_voltage();
     if (new_voltage > prev_voltage) {

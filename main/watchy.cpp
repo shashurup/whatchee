@@ -31,15 +31,15 @@ EpdSpi io;
 Gdeh0154d67 display(io);
 Typography typography(display);
 NotificationBuffer notifications;
-int time_sync_day = 0;
-struct tm display_time;
-int screen = MAIN_SCREEN;
-const char* displayed_notification = 0;
 Battery battery;
-bool connected = false;
-bool prev_connected = true;
-unsigned disconnect_count = 0;
-bool ringing = false;
+int time_sync_day;
+struct tm display_time;
+int screen;
+const char* displayed_notification;
+bool connected;
+bool prev_connected;
+unsigned disconnect_count;
+bool ringing;
 
 
 void sync_current_time(tm* subj) {
@@ -184,7 +184,12 @@ bool handle_notification(Notification* subj) {
 }
 
 void idle_tasks() {
-  battery.measure();
+  struct tm now;
+  bool valid = get_rtc_time(&now);
+  if (valid)
+    battery.measure(&now);
+  else
+    battery.measure(0);
   if (screen == NOTIFICATION_SCREEN &&
       notifications.get_current() &&
       notifications.get_current() != displayed_notification) {
@@ -195,8 +200,6 @@ void idle_tasks() {
     display_time.tm_hour = -1;
   }
   else if (screen == MAIN_SCREEN) {
-    struct tm now;
-    bool valid = get_rtc_time(&now);
     if (valid && now.tm_hour != display_time.tm_hour) {
       send_battery(battery.get_level());
     }
@@ -229,6 +232,15 @@ void setup_pm() {
 extern "C" void app_main()
 {
   ESP_LOGI(TAG, "Enter app_main()");
+
+  time_sync_day = 0;
+  display_time = {};
+  screen = MAIN_SCREEN;
+  displayed_notification = 0;
+  connected = false;
+  prev_connected = true;
+  disconnect_count = 0;
+  ringing = false;
 
   setup_main_queue();
   setup_ble("Whatcheee");

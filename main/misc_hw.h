@@ -30,7 +30,7 @@ class Battery {
   time_t prev_time = 0;
   uint8_t discharge_rate = 0;
  public:
-  void measure();
+  void measure(struct tm* now);
   uint8_t get_level();
   int get_voltage();
   uint8_t get_discharge_rate();
