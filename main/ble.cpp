@@ -224,7 +224,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
             /* Try to update connection parameters */
             struct ble_gap_upd_params params = {.itvl_min = 500, // 625ms
                                                 .itvl_max = 1000, // 1250ms
-                                                .latency = 10, // up to 12.5s
+                                                .latency = 1, // up to 12.5s
                                                 .supervision_timeout = 3000, // 20s
                                                 .min_ce_len = 0,
                                                 .max_ce_len = 0};
