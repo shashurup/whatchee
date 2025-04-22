@@ -26,6 +26,7 @@ static const char* TAG = "main";
 
 #define MAIN_SCREEN 0
 #define NOTIFICATION_SCREEN 1
+#define INFO_SCREEN 2
 
 EpdSpi io;
 Gdeh0154d67 display(io);
@@ -35,6 +36,7 @@ Battery battery;
 int time_sync_day;
 struct tm display_time;
 int screen;
+bool screen_changed;
 const char* displayed_notification;
 bool connected;
 bool prev_connected;
@@ -96,6 +98,7 @@ void draw_main_screen(tm* time, bool valid, bool refresh) {
     // add 15 pixel, for some reason lower part doesn't update
     uint32_t upd_h = hm_h + 15;
     if (display_time.tm_hour != time->tm_hour ||
+        screen_changed ||
         prev_connected != connected) {
       // the whole screen each hour
       upd_x = 0;
@@ -186,6 +189,15 @@ bool handle_notification(Notification* subj) {
   return false;
 }
 
+void draw_info() {
+  display.fillScreen(EPD_WHITE);
+  typography.SetFont(&ter_x20b_pcf20pt[0],
+                     sizeof(ter_x20b_pcf20pt) / sizeof(ter_x20b_pcf20pt[0]));
+  typography.SetCursor(5,5);
+  typography.Print("Info screen");
+  display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
+}
+
 void idle_tasks() {
   struct tm now;
   bool valid = get_rtc_time(&now);
@@ -194,6 +206,7 @@ void idle_tasks() {
   else
     battery.measure(0);
   if (valid && now.tm_hour != display_time.tm_hour) {
+    send_battery(battery.get_level());
     if (!sleeping && now.tm_hour >= 21) {
       sleeping = true;
       connected = false;
@@ -203,27 +216,26 @@ void idle_tasks() {
       ble_wakeup();
     }
   }
-  if (screen == NOTIFICATION_SCREEN &&
-      notifications.get_current() &&
-      notifications.get_current() != displayed_notification) {
+  if (screen == NOTIFICATION_SCREEN) {
+    if (screen_changed ||
+        (notifications.get_current() &&
+         notifications.get_current() != displayed_notification))
     draw_notifications();
     display.deepSleep();
     displayed_notification = notifications.get_current();
-    // provoke whole screen update when back to main screen
-    display_time.tm_hour = -1;
   }
   else if (screen == MAIN_SCREEN) {
-    if (!sleeping && valid && now.tm_hour != display_time.tm_hour) {
-      send_battery(battery.get_level());
-    }
-    if (now.tm_min != display_time.tm_min) {
+    if (now.tm_min != display_time.tm_min || screen_changed) {
       ESP_LOGI(TAG, "Updating time");
       draw_main_screen(&now, valid, false);
       display_time = now;
       display.deepSleep();
     }
   }
-  prev_connected = connected;
+  else if (screen == INFO_SCREEN && screen_changed) {
+    draw_info();
+  }
+  screen_changed = false;
   if (ringing) {
     // TODO find better solution
     vibrate(100, 20);
@@ -249,9 +261,10 @@ extern "C" void app_main()
   time_sync_day = 0;
   display_time = {};
   screen = MAIN_SCREEN;
+  screen_changed = true;
   displayed_notification = 0;
   connected = false;
-  prev_connected = true;
+  prev_connected = false;
   disconnect_count = 0;
   ringing = false;
   sleeping = false;
@@ -286,6 +299,7 @@ extern "C" void app_main()
           switch ((unsigned)msg.data) {
           case BUTTON_BACK:
             screen = MAIN_SCREEN;
+            screen_changed = true;
             break;
           case BUTTON_UP:
             screen = NOTIFICATION_SCREEN;
@@ -295,15 +309,19 @@ extern "C" void app_main()
             screen = NOTIFICATION_SCREEN;
             notifications.next();
             break;
+          case BUTTON_MENU:
+            screen = INFO_SCREEN;
+            screen_changed = true;
+            break;
           }
           break;
         case BUTTON_RELEASED:
           ESP_LOGI(TAG, "Button %u released", (unsigned)msg.data);
-          if ((unsigned)msg.data == BUTTON_MENU) {
-            ESP_LOGI(TAG, "Entering light sleep");
-            vibrate(75, 6);
-            esp_light_sleep_start();
-          }
+          // if ((unsigned)msg.data == BUTTON_MENU) {
+          //   ESP_LOGI(TAG, "Entering light sleep");
+          //   vibrate(75, 6);
+          //   esp_light_sleep_start();
+          // }
           break;
         case CLIENT_SUBSCRIBED:
           send_info();
@@ -319,8 +337,10 @@ extern "C" void app_main()
         }
         case CLIENT_NOTIFICATION: {
           Notification *notif = (Notification *)msg.data;
-          if (handle_notification(notif))
+          if (handle_notification(notif)) {
             screen = NOTIFICATION_SCREEN;
+            screen_changed = true;
+          }
           delete notif;
           break;
         }
