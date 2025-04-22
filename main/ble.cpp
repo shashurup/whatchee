@@ -39,8 +39,9 @@ static ble_uuid_any_t rx_chr_uuid;
 static ble_uuid_any_t tx_chr_uuid;
 static uint16_t rx_char_handle;
 static uint16_t tx_char_handle;
-static uint16_t subscription_conn_handle = 0;
 static bool subscribed = false;
+static bool sleeping = false;
+static int current_connection_handle = -1;
 
 Notification::Notification(size_t text_size) {
   text = (char *)malloc(text_size + 1);
@@ -114,77 +115,81 @@ static void print_conn_desc(struct ble_gap_conn_desc *desc) {
 }
 
 static void start_advertising(void) {
-    /* Local variables */
-    int rc = 0;
-    const char *name;
-    struct ble_hs_adv_fields adv_fields = {};
-    struct ble_hs_adv_fields rsp_fields = {};
-    struct ble_gap_adv_params adv_params = {};
 
-    /* Set advertising flags */
-    adv_fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+  if (sleeping)
+    return;
+  
+  /* Local variables */
+  int rc = 0;
+  const char *name;
+  struct ble_hs_adv_fields adv_fields = {};
+  struct ble_hs_adv_fields rsp_fields = {};
+  struct ble_gap_adv_params adv_params = {};
 
-    /* Set device name */
-    name = ble_svc_gap_device_name();
-    adv_fields.name = (uint8_t *)name;
-    adv_fields.name_len = strlen(name);
-    adv_fields.name_is_complete = 1;
+  /* Set advertising flags */
+  adv_fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
 
-    /* Set device tx power */
-    adv_fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
-    adv_fields.tx_pwr_lvl_is_present = 1;
+  /* Set device name */
+  name = ble_svc_gap_device_name();
+  adv_fields.name = (uint8_t *)name;
+  adv_fields.name_len = strlen(name);
+  adv_fields.name_is_complete = 1;
 
-    /* Set device appearance */
-    adv_fields.appearance = BLE_GAP_APPEARANCE_GENERIC_TAG;
-    adv_fields.appearance_is_present = 1;
+  /* Set device tx power */
+  adv_fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
+  adv_fields.tx_pwr_lvl_is_present = 1;
 
-    /* Set device LE role */
-    adv_fields.le_role = BLE_GAP_LE_ROLE_PERIPHERAL;
-    adv_fields.le_role_is_present = 1;
+  /* Set device appearance */
+  adv_fields.appearance = BLE_GAP_APPEARANCE_GENERIC_TAG;
+  adv_fields.appearance_is_present = 1;
 
-    /* Set advertiement fields */
-    rc = ble_gap_adv_set_fields(&adv_fields);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "failed to set advertising data, error code: %d", rc);
-        return;
-    }
+  /* Set device LE role */
+  adv_fields.le_role = BLE_GAP_LE_ROLE_PERIPHERAL;
+  adv_fields.le_role_is_present = 1;
 
-    /* Set device address */
-    rsp_fields.device_addr = addr_val;
-    rsp_fields.device_addr_type = own_addr_type;
-    rsp_fields.device_addr_is_present = 1;
+  /* Set advertiement fields */
+  rc = ble_gap_adv_set_fields(&adv_fields);
+  if (rc != 0) {
+    ESP_LOGE(TAG, "failed to set advertising data, error code: %d", rc);
+    return;
+  }
 
-    /* Set URI */
-    rsp_fields.uri = esp_uri;
-    rsp_fields.uri_len = sizeof(esp_uri);
+  /* Set device address */
+  rsp_fields.device_addr = addr_val;
+  rsp_fields.device_addr_type = own_addr_type;
+  rsp_fields.device_addr_is_present = 1;
 
-    /* Set advertising interval */
-    rsp_fields.adv_itvl = BLE_GAP_ADV_ITVL_MS(3000);
-    rsp_fields.adv_itvl_is_present = 1;
+  /* Set URI */
+  rsp_fields.uri = esp_uri;
+  rsp_fields.uri_len = sizeof(esp_uri);
 
-    /* Set scan response fields */
-    rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "failed to set scan response data, error code: %d", rc);
-        return;
-    }
+  /* Set advertising interval */
+  rsp_fields.adv_itvl = BLE_GAP_ADV_ITVL_MS(3000);
+  rsp_fields.adv_itvl_is_present = 1;
 
-    /* Set non-connetable and general discoverable mode to be a beacon */
-    adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
-    adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
+  /* Set scan response fields */
+  rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
+  if (rc != 0) {
+    ESP_LOGE(TAG, "failed to set scan response data, error code: %d", rc);
+    return;
+  }
 
-    /* Set advertising interval */
-    adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(3000);
-    adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(4000);
+  /* Set non-connetable and general discoverable mode to be a beacon */
+  adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
+  adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
 
-    /* Start advertising */
-    rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER, &adv_params,
-                           gap_event_handler, NULL);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "failed to start advertising, error code: %d", rc);
-        return;
-    }
-    ESP_LOGI(TAG, "advertising started!");
+  /* Set advertising interval */
+  adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(3000);
+  adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(4000);
+
+  /* Start advertising */
+  rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER, &adv_params,
+                         gap_event_handler, NULL);
+  if (rc != 0) {
+    ESP_LOGE(TAG, "failed to start advertising, error code: %d", rc);
+    return;
+  }
+  ESP_LOGI(TAG, "advertising started!");
 }
 
 /*
@@ -237,6 +242,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
                 return rc;
             }
 
+            current_connection_handle = event->connect.conn_handle;
             struct Message msg = {CLIENT_CONNECTED, 0};
             xQueueSend(main_queue, &msg, 0);
 
@@ -254,6 +260,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
         ESP_LOGI(TAG, "disconnected from peer; reason=%d",
                  event->disconnect.reason);
 
+        current_connection_handle = -1;
         struct Message msg = {CLIENT_DISCONNECTED, 0};
         xQueueSend(main_queue, &msg, 0);
 
@@ -546,7 +553,6 @@ void gatt_svr_subscribe_cb(struct ble_gap_event *event) {
     /* Check attribute handle */
     if (event->subscribe.attr_handle == tx_char_handle) {
         /* Update heart rate subscription status */
-        subscription_conn_handle = event->subscribe.conn_handle;
         subscribed = true;
         Message msg = {};
         msg.type = CLIENT_SUBSCRIBED;
@@ -625,9 +631,11 @@ static void nimble_host_task(void *param) {
 }
 
 void send_command(uint8_t *command, size_t length) {
-  struct os_mbuf* buf = ble_hs_mbuf_from_flat(command, length);
-  ble_gatts_notify_custom(subscription_conn_handle,
-                          tx_char_handle, buf);
+  if (subscribed && current_connection_handle >= 0) {
+    struct os_mbuf* buf = ble_hs_mbuf_from_flat(command, length);
+    ble_gatts_notify_custom(current_connection_handle,
+                            tx_char_handle, buf);
+  }
 }
 
 #define CHRONOSESP_VERSION_MAJOR 1
@@ -700,4 +708,17 @@ void setup_ble(const char* name) {
     // xTaskCreate(heart_rate_task, "Heart Rate", 4*1024, NULL, 5, NULL);
     return;
   
+}
+
+void ble_sleep() {
+  sleeping = true;
+  if (ble_gap_adv_active())
+    ble_gap_adv_stop();
+  if (current_connection_handle >= 0)
+    ble_gap_terminate(current_connection_handle, 0x16);
+}
+
+void ble_wakeup() {
+  sleeping = false;
+  start_advertising();
 }

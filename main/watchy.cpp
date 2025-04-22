@@ -40,6 +40,7 @@ bool connected;
 bool prev_connected;
 unsigned disconnect_count;
 bool ringing;
+bool sleeping;
 
 
 void sync_current_time(tm* subj) {
@@ -79,6 +80,8 @@ void draw_main_screen(tm* time, bool valid, bool refresh) {
             battery.get_level(), battery.get_discharge_rate());
     typography.Print(batt);
   }
+  else if (sleeping)
+    typography.PrintCentered("sleeping", y);
   else
     typography.PrintCentered("disconnected", y);
 
@@ -190,6 +193,16 @@ void idle_tasks() {
     battery.measure(&now);
   else
     battery.measure(0);
+  if (valid && now.tm_hour != display_time.tm_hour) {
+    if (!sleeping && now.tm_hour >= 21) {
+      sleeping = true;
+      connected = false;
+      ble_sleep();
+    } else if (sleeping && now.tm_hour >= 8 && now.tm_hour < 21) {
+      sleeping = false;
+      ble_wakeup();
+    }
+  }
   if (screen == NOTIFICATION_SCREEN &&
       notifications.get_current() &&
       notifications.get_current() != displayed_notification) {
@@ -200,7 +213,7 @@ void idle_tasks() {
     display_time.tm_hour = -1;
   }
   else if (screen == MAIN_SCREEN) {
-    if (valid && now.tm_hour != display_time.tm_hour) {
+    if (!sleeping && valid && now.tm_hour != display_time.tm_hour) {
       send_battery(battery.get_level());
     }
     if (now.tm_min != display_time.tm_min) {
@@ -241,6 +254,7 @@ extern "C" void app_main()
   prev_connected = true;
   disconnect_count = 0;
   ringing = false;
+  sleeping = false;
 
   setup_main_queue();
   setup_ble("Whatcheee");

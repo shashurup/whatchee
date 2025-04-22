@@ -45,7 +45,7 @@ void Battery::measure(struct tm* now) {
     int new_voltage = get_voltage();
     if (new_voltage > prev_voltage) {
       start_voltage = new_voltage;
-      start_time = time(0);
+      start_time = new_time;
       discharge_rate = 0;
     } else {
       discharge_rate = (start_voltage - new_voltage) * 100 * 24 * 3600 /
@@ -54,6 +54,8 @@ void Battery::measure(struct tm* now) {
     }
     prev_voltage = new_voltage;
     prev_time = new_time;
+    ESP_LOGI(__FILE__, "Start: %d, Prev: %d, New: %d",
+             start_voltage, prev_voltage, new_voltage);
   }
 }
 

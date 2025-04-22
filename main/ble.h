@@ -22,6 +22,10 @@ struct Notification {
 
 void setup_ble(const char* name);
 
+void ble_sleep();
+
+void ble_wakeup();
+
 void send_info();
 
 void send_battery(uint8_t level);
