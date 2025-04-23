@@ -27,6 +27,7 @@ static const char* TAG = "main";
 #define MAIN_SCREEN 0
 #define NOTIFICATION_SCREEN 1
 #define INFO_SCREEN 2
+const int minute = 60 * 1000;
 
 EpdSpi io;
 Gdeh0154d67 display(io);
@@ -35,6 +36,7 @@ NotificationBuffer notifications;
 Battery battery;
 int time_sync_day;
 struct tm display_time;
+struct tm boot_time;
 int screen;
 bool screen_changed;
 const char* displayed_notification;
@@ -110,7 +112,7 @@ void draw_main_screen(tm* time, bool valid, bool refresh) {
       upd_x = GDEH0154D67_WIDTH / 2;
       upd_w = GDEH0154D67_WIDTH / 2;
     }
-    ESP_LOGI(TAG, "upd_x: %lu, upd_y: %lu, upd_w: %lu, upd_h: %lu",
+    ESP_LOGD(TAG, "upd_x: %lu, upd_y: %lu, upd_w: %lu, upd_h: %lu",
              upd_x, upd_y, upd_w, upd_h);
     display.updateWindow(upd_x, upd_y, upd_w, upd_h, false);
   }
@@ -198,6 +200,10 @@ void draw_info() {
   display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
 }
 
+bool sleeping_hours(struct tm& now) {
+  return now.tm_hour < 8 || now.tm_hour >= 21;
+}
+
 void idle_tasks() {
   struct tm now;
   bool valid = get_rtc_time(&now);
@@ -207,13 +213,18 @@ void idle_tasks() {
     battery.measure(0);
   if (valid && now.tm_hour != display_time.tm_hour) {
     send_battery(battery.get_level());
-    if (!sleeping && now.tm_hour >= 21) {
-      sleeping = true;
-      connected = false;
-      ble_sleep();
-    } else if (sleeping && now.tm_hour >= 8 && now.tm_hour < 21) {
-      sleeping = false;
-      ble_wakeup();
+    if (sleeping_hours(now)) {
+      if (!sleeping) {
+        sleeping = true;
+        connected = false;
+        ble_sleep();
+      }
+    }
+    else {
+      if (sleeping) {
+        sleeping = false;
+        ble_wakeup();
+      }
     }
   }
   if (screen == NOTIFICATION_SCREEN) {
@@ -225,8 +236,10 @@ void idle_tasks() {
     displayed_notification = notifications.get_current();
   }
   else if (screen == MAIN_SCREEN) {
-    if (now.tm_min != display_time.tm_min || screen_changed) {
-      ESP_LOGI(TAG, "Updating time");
+    if (now.tm_min != display_time.tm_min ||
+        prev_connected != connected ||
+        screen_changed) {
+      ESP_LOGI(TAG, "Updating main screen");
       draw_main_screen(&now, valid, false);
       display_time = now;
       display.deepSleep();
@@ -270,14 +283,17 @@ extern "C" void app_main()
   sleeping = false;
 
   setup_main_queue();
-  setup_ble("Whatcheee");
   setup_misc_hw();
-  setup_pm();
-
-  bool valid = get_rtc_time(&display_time);
+  bool valid = get_rtc_time(&boot_time);
   ESP_LOGI(TAG, "RTC time: %u-%u-%u %u:%u:%u (%d)",
-           display_time.tm_year, display_time.tm_mon, display_time.tm_mday,
-           display_time.tm_hour, display_time.tm_min, display_time.tm_sec, valid);
+           boot_time.tm_year, boot_time.tm_mon, boot_time.tm_mday,
+           boot_time.tm_hour, boot_time.tm_min, boot_time.tm_sec, valid);
+  if (valid) {
+    display_time = boot_time;
+    sleeping = sleeping_hours(boot_time);
+  }
+  setup_ble("Whatcheee", sleeping);
+  setup_pm();
 
   display.init(false);
   draw_main_screen(&display_time, valid, true);
@@ -291,7 +307,8 @@ extern "C" void app_main()
   
   while(true) {
     struct Message msg;
-    if (xQueueReceive(main_queue, &msg, 60 * 1000 / portTICK_PERIOD_MS) == pdTRUE) {
+    int interval = (sleeping ? 10 * minute : minute) / portTICK_PERIOD_MS;
+    if (xQueueReceive(main_queue, &msg, interval) == pdTRUE) {
       if (!handle_misc_hw_events(msg)) {
         switch (msg.type) {
         case BUTTON_PRESSED:

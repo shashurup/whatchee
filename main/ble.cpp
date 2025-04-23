@@ -658,10 +658,12 @@ void send_battery(uint8_t level) {
   send_command(batCmd, 8);
 }
 
-void setup_ble(const char* name) {
+void setup_ble(const char* name, bool inactive) {
     /* Local variables */
     int rc;
     esp_err_t ret;
+
+    sleeping = inactive;
 
     /*
      * NVS flash initialization

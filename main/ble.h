@@ -20,7 +20,7 @@ struct Notification {
   ~Notification();
 };
 
-void setup_ble(const char* name);
+void setup_ble(const char* name, bool inactive);
 
 void ble_sleep();
 
