@@ -193,10 +193,19 @@ bool handle_notification(Notification* subj) {
 
 void draw_info() {
   display.fillScreen(EPD_WHITE);
+  char buf[22];
   typography.SetFont(&ter_x20b_pcf20pt[0],
                      sizeof(ter_x20b_pcf20pt) / sizeof(ter_x20b_pcf20pt[0]));
   typography.SetCursor(5,5);
-  typography.Print("Info screen");
+  strftime(buf, sizeof(buf), "boot: %d.%m %H:%m\n", &boot_time);
+  typography.Print(buf);
+  snprintf(buf, 22, "batt: %u%% (%d)\n",
+           battery.get_level(), battery.get_voltage());
+  typography.Print(buf);
+  snprintf(buf, 22, "discharge: %u%%\n", battery.get_discharge_rate());
+  typography.Print(buf);
+  snprintf(buf, 22, "disconnects: %u\n", disconnect_count);
+  typography.Print(buf);
   display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
 }
 
@@ -260,7 +269,6 @@ void setup_pm() {
   esp_pm_config_t pm_config = {
     .max_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
     .min_freq_mhz = CONFIG_XTAL_FREQ,
-    // .light_sleep_enable = false
     .light_sleep_enable = true
   };
   ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
@@ -272,6 +280,7 @@ extern "C" void app_main()
   ESP_LOGI(TAG, "Enter app_main()");
 
   time_sync_day = 0;
+  boot_time = {};
   display_time = {};
   screen = MAIN_SCREEN;
   screen_changed = true;
@@ -307,7 +316,7 @@ extern "C" void app_main()
   
   while(true) {
     struct Message msg;
-    int interval = (sleeping ? 10 * minute : minute) / portTICK_PERIOD_MS;
+    int interval = (sleeping ? 30 * minute : minute) / portTICK_PERIOD_MS;
     if (xQueueReceive(main_queue, &msg, interval) == pdTRUE) {
       if (!handle_misc_hw_events(msg)) {
         switch (msg.type) {
@@ -334,11 +343,6 @@ extern "C" void app_main()
           break;
         case BUTTON_RELEASED:
           ESP_LOGI(TAG, "Button %u released", (unsigned)msg.data);
-          // if ((unsigned)msg.data == BUTTON_MENU) {
-          //   ESP_LOGI(TAG, "Entering light sleep");
-          //   vibrate(75, 6);
-          //   esp_light_sleep_start();
-          // }
           break;
         case CLIENT_SUBSCRIBED:
           send_info();

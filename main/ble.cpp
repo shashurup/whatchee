@@ -716,8 +716,11 @@ void ble_sleep() {
   sleeping = true;
   if (ble_gap_adv_active())
     ble_gap_adv_stop();
-  if (current_connection_handle >= 0)
+  if (current_connection_handle >= 0) {
     ble_gap_terminate(current_connection_handle, 0x16);
+    current_connection_handle = -1;
+    subscribed = false;
+  }
 }
 
 void ble_wakeup() {
