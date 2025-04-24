@@ -16,7 +16,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.4.0
+    version: 5.4.1
   pcf8563:
     component_hash: ce7c9804c784bb8a276aef1cea2619ccc9800c6ff94c3727e14e14946d91f633
     dependencies: []
