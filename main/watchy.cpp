@@ -35,8 +35,10 @@ Typography typography(display);
 NotificationBuffer notifications;
 Battery battery;
 int time_sync_day;
-struct tm display_time;
-struct tm boot_time;
+RTC_DATA_ATTR time_t boot_time = 0;
+RTC_DATA_ATTR uint8_t prev_day = 0;
+RTC_DATA_ATTR uint8_t prev_hour = 0;
+RTC_DATA_ATTR uint8_t prev_minute = 0;
 int screen;
 bool screen_changed;
 const char* displayed_notification;
@@ -54,7 +56,7 @@ void sync_current_time(tm* subj) {
   }
 }
 
-void draw_main_screen(tm* time, bool valid, bool refresh) {
+void draw_main_screen(tm* time, bool valid) {
   display.fillScreen(EPD_WHITE);
   char hour_min[6] = "--:--";
   if (valid)
@@ -66,13 +68,13 @@ void draw_main_screen(tm* time, bool valid, bool refresh) {
   uint16_t hm_h = typography.PrintCentered(hour_min, y);
   y += hm_h;
 
-  char day_month[11];
-  strftime(day_month, 11, "%a %e %b", time);
+  char day_month[11] = "---";
+  if (valid)
+    strftime(day_month, 11, "%a %e %b", time);
   typography.SetFont(&ter_x32b_pcf32pt[0],
                      sizeof(ter_x32b_pcf32pt) / sizeof(ter_x32b_pcf32pt[0]));
   y += 12;
-  if (valid)
-    y += typography.PrintCentered(day_month, y);
+  y += typography.PrintCentered(day_month, y);
 
   typography.SetFont(&ter_x20b_pcf20pt[0],
                      sizeof(ter_x20b_pcf20pt) / sizeof(ter_x20b_pcf20pt[0]));
@@ -89,7 +91,7 @@ void draw_main_screen(tm* time, bool valid, bool refresh) {
   else
     typography.PrintCentered("disconnected", y);
 
-  if (refresh || display_time.tm_mday != time->tm_mday)
+  if (valid && prev_day != time->tm_mday)
     display.update();
   else {
     // only last digit by defalt
@@ -99,7 +101,8 @@ void draw_main_screen(tm* time, bool valid, bool refresh) {
     uint32_t upd_y = hm_y;
     // add 15 pixel, for some reason lower part doesn't update
     uint32_t upd_h = hm_h + 15;
-    if (display_time.tm_hour != time->tm_hour ||
+    if (!valid ||
+        prev_hour != time->tm_hour ||
         screen_changed ||
         prev_connected != connected) {
       // the whole screen each hour
@@ -107,7 +110,7 @@ void draw_main_screen(tm* time, bool valid, bool refresh) {
       upd_y = 0;
       upd_w = GDEH0154D67_WIDTH;
       upd_h = GDEH0154D67_HEIGHT;
-    } else if (display_time.tm_min / 10 != time->tm_min / 10) {
+    } else if (prev_minute / 10 != time->tm_min / 10) {
       // last two digits every 10 minutes
       upd_x = GDEH0154D67_WIDTH / 2;
       upd_w = GDEH0154D67_WIDTH / 2;
@@ -197,8 +200,11 @@ void draw_info() {
   typography.SetFont(&ter_x20b_pcf20pt[0],
                      sizeof(ter_x20b_pcf20pt) / sizeof(ter_x20b_pcf20pt[0]));
   typography.SetCursor(5,5);
-  strftime(buf, sizeof(buf), "boot: %d.%m %H:%m\n", &boot_time);
-  typography.Print(buf);
+  if (boot_time) {
+    struct tm* bt = localtime(&boot_time);
+    strftime(buf, sizeof(buf), "boot: %d.%m %H:%M\n", bt);
+    typography.Print(buf);
+  }
   snprintf(buf, 22, "batt: %u%% (%d)\n",
            battery.get_level(), battery.get_voltage());
   typography.Print(buf);
@@ -213,29 +219,33 @@ bool sleeping_hours(struct tm& now) {
   return now.tm_hour < 8 || now.tm_hour >= 21;
 }
 
+void deep_sleep() {
+  esp_sleep_enable_timer_wakeup(600000000); // 10 mins
+  // esp_sleep_enable_ext1_wakeup(
+  //     BTN_PIN_MASK,
+  //     ESP_EXT1_WAKEUP_ANY_HIGH); // enable deep sleep wake on button press
+  ESP_LOGI(TAG, "Deeply sleeping");
+  esp_deep_sleep_start();
+}
+
 void idle_tasks() {
   struct tm now;
   bool valid = get_rtc_time(&now);
-  if (valid)
+  if (valid) {
     battery.measure(&now);
-  else
-    battery.measure(0);
-  if (valid && now.tm_hour != display_time.tm_hour) {
-    send_battery(battery.get_level());
-    if (sleeping_hours(now)) {
-      if (!sleeping) {
-        sleeping = true;
-        connected = false;
-        ble_sleep();
-      }
-    }
-    else {
-      if (sleeping) {
-        sleeping = false;
-        ble_wakeup();
-      }
+    sleeping = sleeping_hours(now);
+    if (now.tm_hour != prev_hour)
+      send_battery(battery.get_level());
+    if (!boot_time) {
+      ESP_LOGI(TAG, "RTC time: %u-%u-%u %u:%u:%u (%d)",
+               now.tm_year, now.tm_mon, now.tm_mday,
+               now.tm_hour, now.tm_min, now.tm_sec, valid);
+      boot_time = mktime(&now);
     }
   }
+  else
+    battery.measure(0);
+
   if (screen == NOTIFICATION_SCREEN) {
     if (screen_changed ||
         (notifications.get_current() &&
@@ -245,24 +255,34 @@ void idle_tasks() {
     displayed_notification = notifications.get_current();
   }
   else if (screen == MAIN_SCREEN) {
-    if (now.tm_min != display_time.tm_min ||
+    if (!valid ||
+        now.tm_min != prev_minute ||
         prev_connected != connected ||
         screen_changed) {
       ESP_LOGI(TAG, "Updating main screen");
-      draw_main_screen(&now, valid, false);
-      display_time = now;
+      draw_main_screen(&now, valid);
       display.deepSleep();
     }
   }
   else if (screen == INFO_SCREEN && screen_changed) {
     draw_info();
+    display.deepSleep();
+  }
+
+  if (valid) {
+    prev_day = now.tm_mday;
+    prev_hour = now.tm_hour;
+    prev_minute = now.tm_min;
   }
   screen_changed = false;
+
   if (ringing) {
     // TODO find better solution
     vibrate(100, 20);
     ringing = false;
   }
+  if (sleeping)
+    deep_sleep();
 }
 
 void setup_pm() {
@@ -280,8 +300,6 @@ extern "C" void app_main()
   ESP_LOGI(TAG, "Enter app_main()");
 
   time_sync_day = 0;
-  boot_time = {};
-  display_time = {};
   screen = MAIN_SCREEN;
   screen_changed = true;
   displayed_notification = 0;
@@ -290,23 +308,25 @@ extern "C" void app_main()
   disconnect_count = 0;
   ringing = false;
   sleeping = false;
+  bool refresh = false;
 
-  setup_main_queue();
-  setup_misc_hw();
-  bool valid = get_rtc_time(&boot_time);
-  ESP_LOGI(TAG, "RTC time: %u-%u-%u %u:%u:%u (%d)",
-           boot_time.tm_year, boot_time.tm_mon, boot_time.tm_mday,
-           boot_time.tm_hour, boot_time.tm_min, boot_time.tm_sec, valid);
-  if (valid) {
-    display_time = boot_time;
-    sleeping = sleeping_hours(boot_time);
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause(); // get wake up reason
+  ESP_LOGI(TAG, "Wakeup reason: %d", wakeup_reason);
+  if (wakeup_reason == 0) {
+    refresh = true;
+    boot_time = 0;
+    prev_day = 0;
+    prev_hour = 0;
+    prev_minute = 0;
   }
-  setup_ble("Whatcheee", sleeping);
-  setup_pm();
 
-  display.init(false);
-  draw_main_screen(&display_time, valid, true);
-  display.deepSleep();
+  setup_misc_hw();
+  display.init();
+  display.setRefresh(refresh);
+  idle_tasks();
+  setup_pm();
+  setup_main_queue();
+  setup_ble("Whatcheee");
 
   // notifications.add("Довольно короткое сообщение №1 123456 code");
   // notifications.add("Quite short test message 2\nwith line breaks и т.д. и т.р. and so on");
@@ -316,7 +336,7 @@ extern "C" void app_main()
   
   while(true) {
     struct Message msg;
-    int interval = (sleeping ? 30 * minute : minute) / portTICK_PERIOD_MS;
+    int interval = minute / portTICK_PERIOD_MS;
     if (xQueueReceive(main_queue, &msg, interval) == pdTRUE) {
       if (!handle_misc_hw_events(msg)) {
         switch (msg.type) {
@@ -351,7 +371,8 @@ extern "C" void app_main()
         case CLIENT_TIME: {
           tm* t = (tm *)msg.data;
           ESP_LOGI(TAG, "Got time: %u-%u-%u %u:%u:%u",
-                   t->tm_year, t->tm_mon, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+                   t->tm_year, t->tm_mon, t->tm_mday,
+                   t->tm_hour, t->tm_min, t->tm_sec);
           sync_current_time(t);
           delete t;
           break;

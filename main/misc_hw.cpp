@@ -173,6 +173,17 @@ void set_rtc_time(tm* t) {
     ESP_LOGE(__FILE__, "Error setting RTC time %d", err);
 }
 
+void clear_rtc_timer() {
+  uint8_t tmp = ~PCF8563_TF;
+  pcf8563_ioctl(&pcf, PCF8563_CONTROL_STATUS2_WRITE, &tmp);
+}
+
+void set_rtc_timer(uint8_t minutes) {
+  uint8_t control = PCF8563_TIMER_ENABLE | PCF8563_TIMER_1_60HZ;
+  pcf8563_ioctl(&pcf, PCF8563_TIMER_WRITE, &minutes);
+  pcf8563_ioctl(&pcf, PCF8563_TIMER_CONTROL_WRITE, &control);
+}
+
 void setup_battery_adc() {
   adc_oneshot_unit_init_cfg_t init_config = {
     .unit_id = ADC_UNIT_1,

@@ -22,6 +22,10 @@ bool get_rtc_time(tm* t);
 
 void set_rtc_time(tm* t);
 
+void clear_rtc_timer();
+
+void set_rtc_timer(uint8_t minutes);
+
 class Battery {
  private:
   int start_voltage;

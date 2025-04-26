@@ -40,7 +40,6 @@ static ble_uuid_any_t tx_chr_uuid;
 static uint16_t rx_char_handle;
 static uint16_t tx_char_handle;
 static bool subscribed = false;
-static bool sleeping = false;
 static int current_connection_handle = -1;
 
 Notification::Notification(size_t text_size) {
@@ -116,9 +115,6 @@ static void print_conn_desc(struct ble_gap_conn_desc *desc) {
 
 static void start_advertising(void) {
 
-  if (sleeping)
-    return;
-  
   /* Local variables */
   int rc = 0;
   const char *name;
@@ -658,12 +654,10 @@ void send_battery(uint8_t level) {
   send_command(batCmd, 8);
 }
 
-void setup_ble(const char* name, bool inactive) {
+void setup_ble(const char* name) {
     /* Local variables */
     int rc;
     esp_err_t ret;
-
-    sleeping = inactive;
 
     /*
      * NVS flash initialization
@@ -710,20 +704,4 @@ void setup_ble(const char* name, bool inactive) {
     // xTaskCreate(heart_rate_task, "Heart Rate", 4*1024, NULL, 5, NULL);
     return;
   
-}
-
-void ble_sleep() {
-  sleeping = true;
-  if (ble_gap_adv_active())
-    ble_gap_adv_stop();
-  if (current_connection_handle >= 0) {
-    ble_gap_terminate(current_connection_handle, 0x16);
-    current_connection_handle = -1;
-    subscribed = false;
-  }
-}
-
-void ble_wakeup() {
-  sleeping = false;
-  start_advertising();
 }
