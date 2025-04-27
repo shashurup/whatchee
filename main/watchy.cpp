@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 #include <epdspi.h>
 #include <gdeh0154d67.h>
+#include <nvs_flash.h>
 #include <time.h>
 
 #include "main_queue.h"
@@ -220,6 +221,7 @@ bool sleeping_hours(struct tm& now) {
 }
 
 void deep_sleep() {
+  battery.flush();
   esp_sleep_enable_timer_wakeup(600000000); // 10 mins
   // esp_sleep_enable_ext1_wakeup(
   //     BTN_PIN_MASK,
@@ -295,6 +297,15 @@ void setup_pm() {
   esp_sleep_enable_gpio_wakeup();
 }
 
+void setup_nvs() {
+  esp_err_t ret = nvs_flash_init();
+  if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
+      ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      ESP_ERROR_CHECK(nvs_flash_erase());
+      ESP_ERROR_CHECK(nvs_flash_init());
+  }
+}
+
 extern "C" void app_main()
 {
   ESP_LOGI(TAG, "Enter app_main()");
@@ -319,7 +330,7 @@ extern "C" void app_main()
     prev_hour = 0;
     prev_minute = 0;
   }
-
+  setup_nvs();
   setup_misc_hw();
   display.init();
   display.setRefresh(refresh);

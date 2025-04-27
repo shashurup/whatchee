@@ -9,6 +9,9 @@
 #include <driver/i2c_master.h>
 #include <pcf8563.h>
 #include <cstring>
+#include <nvs_flash.h>
+
+#include "utils.h"
 
 #define VIB_MOTOR_PIN GPIO_NUM_13
 #define BUTTON_MENU_GPIO GPIO_NUM_26
@@ -39,6 +42,20 @@ void vibrate(uint8_t intervalMs, uint8_t length) {
 #define BATTERY_MAX 2900
 #define BATTERY_MIN 2100
 
+void Battery::flush() {
+  if (log_idx < 5)
+    return;
+  append_nvs_block("whatchee.batt", log, log_idx * 2);
+  log_idx = 0;
+}
+
+void Battery::append_log(uint16_t subj) {
+  ESP_LOGI(__FILE__, "Logging battery, %u", subj);
+  log[log_idx++] = subj;
+  if (log_idx >= 100)
+    flush();
+}
+
 void Battery::measure(struct tm* now) {
   time_t new_time = now ? mktime(now) : time(0);
   if ((new_time - prev_time) > 60 * 60 * 3) {
@@ -56,6 +73,10 @@ void Battery::measure(struct tm* now) {
     prev_time = new_time;
     ESP_LOGI(__FILE__, "Start: %d, Prev: %d, New: %d",
              start_voltage, prev_voltage, new_voltage);
+  }
+  if (now->tm_min / 10 != prev_min / 10) {
+    append_log(get_voltage());
+    prev_min = now->tm_min;
   }
 }
 
@@ -182,6 +203,48 @@ void set_rtc_timer(uint8_t minutes) {
   uint8_t control = PCF8563_TIMER_ENABLE | PCF8563_TIMER_1_60HZ;
   pcf8563_ioctl(&pcf, PCF8563_TIMER_WRITE, &minutes);
   pcf8563_ioctl(&pcf, PCF8563_TIMER_CONTROL_WRITE, &control);
+}
+
+int8_t find_last_bloc(nvs_handle_t handle) {
+  nvs_iterator_t it = 0;
+  int8_t block = -1;
+  esp_err_t res = nvs_entry_find_in_handle(handle, NVS_TYPE_BLOB, &it);
+  while (res == ESP_OK) {
+    nvs_entry_info_t info;
+    nvs_entry_info(it, &info);
+    int key = atoi(info.key);
+    if (key > block)
+      block = (int8_t) key;
+    res = nvs_entry_next(&it);
+  }
+  return block;
+}
+
+void delete_block_before(nvs_handle_t handle, int8_t block_no) {
+  esp_err_t res = ESP_OK;
+  for (int8_t no = block_no; no >= 0 && res == ESP_OK; --no) {
+    char key[5];
+    sprintf(key, "%d", no);
+    res = nvs_erase_key(handle, key);
+  }
+}
+
+void append_nvs_block(const char *name, void *buf, size_t size) {
+  nvs_handle_t handle;
+  esp_err_t res = nvs_open(name, NVS_READWRITE, &handle);
+  if (res == ESP_OK) {
+    int8_t block_no = find_last_bloc(handle) + 1;
+    int8_t old_no = block_no - 10;
+    if (old_no >= 0)
+      delete_block_before(handle, old_no);
+    if (block_no > 99)
+      block_no = 0;
+    char key[5];
+    sprintf(key, "%d", block_no);
+    nvs_set_blob(handle, key, buf, size);
+    nvs_commit(handle);
+    nvs_close(handle);
+  }
 }
 
 void setup_battery_adc() {

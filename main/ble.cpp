@@ -1,7 +1,6 @@
 #include "ble.h"
 #include "main_queue.h"
 #include "esp_log.h"
-#include "nvs_flash.h"
 #include "nimble/ble.h"
 #include "nimble/nimble_port.h"
 #include <host/ble_gap.h>
@@ -658,21 +657,6 @@ void setup_ble(const char* name) {
     /* Local variables */
     int rc;
     esp_err_t ret;
-
-    /*
-     * NVS flash initialization
-     * Dependency of BLE stack to store configurations
-     */
-    ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
-        ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "failed to initialize nvs flash, error code: %d ", ret);
-        return;
-    }
 
     /* NimBLE stack initialization */
     ret = nimble_port_init();
