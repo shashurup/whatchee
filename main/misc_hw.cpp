@@ -45,6 +45,7 @@ void vibrate(uint8_t intervalMs, uint8_t length) {
 void Battery::flush() {
   if (log_idx < 5)
     return;
+  ESP_LOGI(__FILE__, "Storing battery log");
   append_nvs_block("whatchee.batt", log, log_idx * 2);
   log_idx = 0;
 }
