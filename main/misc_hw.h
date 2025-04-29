@@ -34,7 +34,7 @@ class Battery {
   time_t start_time;
   int prev_voltage = 0;
   time_t prev_time = 0;
-  uint8_t prev_min = 0;
+  unsigned up_count = 0;
   uint8_t discharge_rate = 0;
   uint16_t log[100];
   uint8_t log_idx = 0;

@@ -58,25 +58,22 @@ void Battery::append_log(uint16_t subj) {
 
 void Battery::measure(struct tm* now) {
   time_t new_time = now ? mktime(now) : time(0);
-  if ((new_time - prev_time) > 60 * 60 * 3) {
-    int new_voltage = get_voltage();
-    if (new_voltage > prev_voltage) {
-      start_voltage = new_voltage;
-      start_time = new_time;
-      discharge_rate = 0;
-    } else {
-      discharge_rate = (start_voltage - new_voltage) * 100 * 24 * 3600 /
-        ((new_time - start_time) * (BATTERY_MAX - BATTERY_MIN));
-      ESP_LOGI(__FILE__, "Discharge rate: %u", discharge_rate);
-    }
-    prev_voltage = new_voltage;
-    prev_time = new_time;
-    ESP_LOGI(__FILE__, "Start: %d, Prev: %d, New: %d",
-             start_voltage, prev_voltage, new_voltage);
+  int new_voltage = get_voltage();
+  up_count = new_voltage > prev_voltage ? up_count + 1 : 0;
+  if (up_count > 5 || start_voltage == 0) {
+    start_voltage = new_voltage;
+    start_time = new_time;
+    discharge_rate = 0;
+    ESP_LOGI(__FILE__, "Charging: %u", new_voltage);
+  } else {
+    discharge_rate = (start_voltage - new_voltage) * 100 * 24 * 3600 /
+      ((new_time - start_time) * (BATTERY_MAX - BATTERY_MIN));
+    ESP_LOGI(__FILE__, "Disharging: %u", new_voltage);
   }
-  if (now->tm_min / 10 != prev_min / 10) {
+  prev_voltage = new_voltage;
+  prev_time = new_time;
+  if ((now->tm_min % 10) == 0) {
     append_log(get_voltage());
-    prev_min = now->tm_min;
   }
 }
 
