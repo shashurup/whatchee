@@ -48,6 +48,9 @@ bool prev_connected;
 unsigned disconnect_count;
 bool ringing;
 bool sleeping;
+const char *wdays[] = {"Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"};
+const char *months[] = {"Янв", "Фев", "Мар", "Апр", "Мая", "Июня",
+                        "Июля", "Авг", "Сен", "Окт", "Ноя", "Дек"};
 
 
 void sync_current_time(tm* subj) {
@@ -71,7 +74,8 @@ void draw_main_screen(tm* time, bool valid) {
 
   char day_month[11] = "---";
   if (valid)
-    strftime(day_month, 11, "%a %e %b", time);
+    sprintf(day_month, "%s %d %s",
+            wdays[time->tm_wday], time->tm_mday, months[time->tm_mon]);
   typography.SetFont(&ter_x32b_pcf32pt[0],
                      sizeof(ter_x32b_pcf32pt) / sizeof(ter_x32b_pcf32pt[0]));
   y += 12;
