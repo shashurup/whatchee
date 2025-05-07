@@ -28,8 +28,6 @@ TimerHandle_t debounce_timers[4];
 
 
 void vibrate(uint8_t intervalMs, uint8_t length) {
-  gpio_reset_pin(VIB_MOTOR_PIN);
-  gpio_set_direction(VIB_MOTOR_PIN, GPIO_MODE_OUTPUT);
   bool motorOn = false;
   for (int i = 0; i < length; i++) {
     motorOn = !motorOn;
@@ -45,6 +43,10 @@ void vibrate(uint8_t intervalMs, uint8_t length) {
 void Battery::flush() {
   if (log_idx < 5)
     return;
+  // Something happens during flush and deepsleep
+  // So that it starts vibrating
+  // This is kinda walkaround
+  vTaskDelay(5000 / portTICK_PERIOD_MS);
   ESP_LOGI(__FILE__, "Storing battery log");
   append_nvs_block("whatchee.batt", log, log_idx * 2);
   log_idx = 0;
@@ -284,8 +286,15 @@ void setup_rtc() {
     ESP_LOGE(__FILE__, "PCF8563 init error, %d", err);
 }
 
+void setup_vib_motor() {
+  gpio_reset_pin(VIB_MOTOR_PIN);
+  gpio_pullup_dis(VIB_MOTOR_PIN);
+  gpio_set_direction(VIB_MOTOR_PIN, GPIO_MODE_OUTPUT);
+}
+
 void setup_misc_hw() {
   setup_buttons();
+  setup_vib_motor();
   setup_battery_adc();
   setup_rtc();
 }

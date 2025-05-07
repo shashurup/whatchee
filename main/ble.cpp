@@ -87,25 +87,14 @@ inline static void format_addr(char *addr_str, uint8_t addr[]) {
 }
 
 static void print_conn_desc(struct ble_gap_conn_desc *desc) {
-    /* Local variables */
     char addr_str[18] = {0};
 
-    /* Connection handle */
-    ESP_LOGI(TAG, "connection handle: %d", desc->conn_handle);
-
-    /* Local ID address */
-    format_addr(addr_str, desc->our_id_addr.val);
-    ESP_LOGI(TAG, "device id address: type=%d, value=%s",
-             desc->our_id_addr.type, addr_str);
-
-    /* Peer ID address */
     format_addr(addr_str, desc->peer_id_addr.val);
-    ESP_LOGI(TAG, "peer id address: type=%d, value=%s", desc->peer_id_addr.type,
-             addr_str);
+    ESP_LOGI(TAG, "  handle=%d, peer=%s (%d)", desc->conn_handle,
+             addr_str, desc->peer_id_addr.type);
 
-    /* Connection info */
     ESP_LOGI(TAG,
-             "conn_itvl=%d, conn_latency=%d, supervision_timeout=%d, "
+             "  conn_itvl=%d, conn_latency=%d, supervision_timeout=%d, "
              "encrypted=%d, authenticated=%d, bonded=%d\n",
              desc->conn_itvl, desc->conn_latency, desc->supervision_timeout,
              desc->sec_state.encrypted, desc->sec_state.authenticated,
