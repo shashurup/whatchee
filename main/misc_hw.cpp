@@ -38,7 +38,7 @@ void vibrate(uint8_t intervalMs, uint8_t length) {
 
 // millivolts
 #define BATTERY_MAX 2900
-#define BATTERY_MIN 2100
+#define BATTERY_MIN 2300
 
 void Battery::flush() {
   if (log_idx < 5)
