@@ -81,9 +81,7 @@ void draw_main_screen(tm* time, bool valid) {
   y += 12;
   y += typography.PrintCentered(day_month, y);
 
-  typography.SetFont(&ter_x20b_pcf20pt[0],
-                     sizeof(ter_x20b_pcf20pt) / sizeof(ter_x20b_pcf20pt[0]));
-  y += 20;
+  y += 12;
   if (connected) {
     typography.SetCursor(20, y);
     char batt[10] = {};
@@ -92,9 +90,9 @@ void draw_main_screen(tm* time, bool valid) {
     typography.Print(batt);
   }
   else if (sleeping)
-    typography.PrintCentered("sleeping", y);
+    typography.PrintCentered("сон", y);
   else
-    typography.PrintCentered("disconnected", y);
+    typography.PrintCentered("разрыв", y);
 
   if (valid && prev_day != time->tm_mday)
     display.update();
@@ -155,8 +153,8 @@ void draw_notifications() {
     y += typography.PrintCentered(code.c_str(), y);
     y += 10;
   }
-  typography.SetFont(&ter_x20b_pcf20pt[0],
-                     sizeof(ter_x20b_pcf20pt) / sizeof(ter_x20b_pcf20pt[0]));
+  typography.SetFont(&ter_x32b_pcf32pt[0],
+                     sizeof(ter_x32b_pcf32pt) / sizeof(ter_x32b_pcf32pt[0]));
   typography.FitText(notification, 5, y, 190, GDEH0154D67_HEIGHT - y - 5);
   display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
 }
