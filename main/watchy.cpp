@@ -72,26 +72,22 @@ void draw_main_screen(tm* time, bool valid) {
   uint16_t hm_h = typography.PrintCentered(hour_min, y);
   y += hm_h;
 
+  display.drawRect(10, 104, 180, 5, EPD_BLACK);
+  display.fillRect(10, 105, 180 * battery.get_level() / 100, 4, EPD_BLACK);
+  
   char day_month[11] = "---";
   if (valid)
     sprintf(day_month, "%s %d %s",
             wdays[time->tm_wday], time->tm_mday, months[time->tm_mon]);
   typography.SetFont(&ter_x32b_pcf32pt[0],
                      sizeof(ter_x32b_pcf32pt) / sizeof(ter_x32b_pcf32pt[0]));
-  y += 12;
+  y += 16;
   y += typography.PrintCentered(day_month, y);
 
-  y += 12;
-  if (connected) {
-    typography.SetCursor(20, y);
-    char batt[10] = {};
-    sprintf(batt, "%u (%u)",
-            battery.get_level(), battery.get_discharge_rate());
-    typography.Print(batt);
-  }
-  else if (sleeping)
+  y += 10;
+  if (sleeping)
     typography.PrintCentered("сон", y);
-  else
+  else if (!connected)
     typography.PrintCentered("разрыв", y);
 
   if (valid && prev_day != time->tm_mday)
