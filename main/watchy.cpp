@@ -62,7 +62,7 @@ void sync_current_time(tm* subj) {
 
 void draw_main_screen(tm* time, bool valid) {
   display.fillScreen(EPD_WHITE);
-  char hour_min[6] = "--:--";
+  char hour_min[] = "--:--";
   if (valid)
     sprintf(hour_min, "%02d:%02d", time->tm_hour, time->tm_min);
   SET_FONT(typography, C059_Bold37pt);
@@ -302,6 +302,7 @@ void setup_nvs() {
 extern "C" void app_main()
 {
   ESP_LOGI(TAG, "Enter app_main()");
+  // esp_deep_sleep_start();
 
   time_sync_day = 0;
   screen = MAIN_SCREEN;
@@ -330,7 +331,7 @@ extern "C" void app_main()
   idle_tasks();
   setup_pm();
   setup_main_queue();
-  setup_ble("Whatcheee");
+  setup_ble("Whatcheee2");
 
   // notifications.add("Довольно короткое сообщение №1 123456 code");
   // notifications.add("Quite short test message 2\nwith line breaks и т.д. и т.р. and so on");

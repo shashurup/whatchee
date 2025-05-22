@@ -75,7 +75,7 @@ void Battery::measure(struct tm* now) {
   }
   prev_voltage = new_voltage;
   prev_time = new_time;
-  if ((now->tm_min % 10) == 0) {
+  if (now && (now->tm_min % 10) == 0) {
     append_log(get_voltage());
   }
 }
