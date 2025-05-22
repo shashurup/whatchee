@@ -3,6 +3,9 @@
 #include <gfxfont.h>
 #include "utils.h"
 
+
+#define SET_FONT(t, f) t.SetFont(&f[0], sizeof(f)/ sizeof(f[0]))
+
 struct UnicodeFont {
   GFXfont base_font;
   unsigned page, first, last;

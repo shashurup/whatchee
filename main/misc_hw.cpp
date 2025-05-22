@@ -46,9 +46,9 @@ void Battery::flush() {
   // Something happens during flush and deepsleep
   // So that it starts vibrating
   // This is kinda walkaround
-  vTaskDelay(5000 / portTICK_PERIOD_MS);
-  ESP_LOGI(__FILE__, "Storing battery log");
-  append_nvs_block("whatchee.batt", log, log_idx * 2);
+  // vTaskDelay(5000 / portTICK_PERIOD_MS);
+  // ESP_LOGI(__FILE__, "Storing battery log");
+  // append_nvs_block("whatchee.batt", log, log_idx * 2);
   log_idx = 0;
 }
 

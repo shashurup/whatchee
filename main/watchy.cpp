@@ -18,7 +18,7 @@
 #include "misc_hw.h"
 #include "utils.h"
 #include "typography.h"
-#include "ter_x20b_pcf20pt.h"
+#include "ter_x28b_pcf28pt.h"
 #include "ter_x32b_pcf32pt.h"
 #include "c509_bold37pt.h"
 #include "c509_bold29pt.h"
@@ -65,8 +65,7 @@ void draw_main_screen(tm* time, bool valid) {
   char hour_min[6] = "--:--";
   if (valid)
     sprintf(hour_min, "%02d:%02d", time->tm_hour, time->tm_min);
-  typography.SetFont(&C059_Bold37pt[0],
-                     sizeof(C059_Bold37pt)/ sizeof(C059_Bold37pt[0]));
+  SET_FONT(typography, C059_Bold37pt);
   uint16_t y = 40;
   uint16_t hm_y = y;
   uint16_t hm_h = typography.PrintCentered(hour_min, y);
@@ -79,8 +78,7 @@ void draw_main_screen(tm* time, bool valid) {
   if (valid)
     sprintf(day_month, "%s %d %s",
             wdays[time->tm_wday], time->tm_mday, months[time->tm_mon]);
-  typography.SetFont(&ter_x32b_pcf32pt[0],
-                     sizeof(ter_x32b_pcf32pt) / sizeof(ter_x32b_pcf32pt[0]));
+  SET_FONT(typography, ter_x32b_pcf32pt);
   y += 16;
   y += typography.PrintCentered(day_month, y);
 
@@ -144,13 +142,11 @@ void draw_notifications() {
   auto code = find_code(notification);
   uint16_t y = 5;
   if (!code.empty()) {
-    typography.SetFont(&C059_Bold29pt[0],
-                       sizeof(C059_Bold29pt)/ sizeof(C059_Bold29pt[0]));
+    SET_FONT(typography, C059_Bold29pt);
     y += typography.PrintCentered(code.c_str(), y);
     y += 10;
   }
-  typography.SetFont(&ter_x32b_pcf32pt[0],
-                     sizeof(ter_x32b_pcf32pt) / sizeof(ter_x32b_pcf32pt[0]));
+  SET_FONT(typography, ter_x28b_pcf28pt);
   typography.FitText(notification, 5, y, 190, GDEH0154D67_HEIGHT - y - 5);
   display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
 }
@@ -196,20 +192,19 @@ bool handle_notification(Notification* subj) {
 void draw_info() {
   display.fillScreen(EPD_WHITE);
   char buf[22];
-  typography.SetFont(&ter_x20b_pcf20pt[0],
-                     sizeof(ter_x20b_pcf20pt) / sizeof(ter_x20b_pcf20pt[0]));
+  SET_FONT(typography, ter_x28b_pcf28pt);
   typography.SetCursor(5,5);
   if (boot_time) {
     struct tm* bt = localtime(&boot_time);
-    strftime(buf, sizeof(buf), "boot: %d.%m %H:%M\n", bt);
+    strftime(buf, sizeof(buf), " %d.%m %H:%M\n", bt);
     typography.Print(buf);
   }
-  snprintf(buf, 22, "batt: %u%% (%d)\n",
+  snprintf(buf, 22, " %u%% (%d)\n",
            battery.get_level(), battery.get_voltage());
   typography.Print(buf);
-  snprintf(buf, 22, "discharge: %u%%\n", battery.get_discharge_rate());
+  snprintf(buf, 22, " %u%% в день\n", battery.get_discharge_rate());
   typography.Print(buf);
-  snprintf(buf, 22, "disconnects: %u\n", disconnect_count);
+  snprintf(buf, 22, " %u разрывов\n", disconnect_count);
   typography.Print(buf);
   display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
 }
