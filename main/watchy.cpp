@@ -122,12 +122,14 @@ void draw_main_screen(tm* time, bool valid) {
 // treat them like 2FA code
 std::string find_code(const char* subj) {
   std::string result;
+  bool space_before = true;
   for (const char* p = subj; *p; ++p) {
     if (isdigit(*p))
       result += *p;
     else {
-      if (result.size() <= 6 && result.size() >= 4)
+      if (space_before && result.size() <= 6 && result.size() >= 4)
         return result;
+      space_before = isspace(*p);
       result.clear();
     }
   }
