@@ -333,7 +333,7 @@ extern "C" void app_main()
   idle_tasks();
   setup_pm();
   setup_main_queue();
-  setup_ble("Whatcheee2");
+  setup_ble("Whatcheee");
 
   // notifications.add("Довольно короткое сообщение №1 123456 code");
   // notifications.add("Quite short test message 2\nwith line breaks и т.д. и т.р. and so on");
