@@ -82,8 +82,8 @@ void Battery::measure(struct tm* now) {
 
 uint8_t Battery::get_level() {
   int millivolts = get_voltage();
-  uint8_t level = (millivolts - BATTERY_MIN) * 100 / (BATTERY_MAX - BATTERY_MIN);
-  return level > 100 ? 100 : level;
+  int level = (millivolts - BATTERY_MIN) * 100 / (BATTERY_MAX - BATTERY_MIN);
+  return level > 100 ? 100 : level < 0 ? 0 : level;
 }
 
 int Battery::get_voltage() {
