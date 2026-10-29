@@ -10,13 +10,13 @@ dependencies:
   calepd:
     dependencies: []
     source:
-      path: /home/georgy/d/watchy/calepd
+      path: ../calepd
       type: local
     version: '*'
   idf:
     source:
       type: idf
-    version: 5.5.2
+    version: 6.0.0
   pcf8563:
     component_hash: ce7c9804c784bb8a276aef1cea2619ccc9800c6ff94c3727e14e14946d91f633
     dependencies: []
@@ -31,4 +31,4 @@ direct_dependencies:
 - pcf8563
 manifest_hash: 286eee260dd552aeaf0e001bfbac64de92f2b24c86ddec96016281fe4908f203
 target: esp32
-version: 2.0.0
+version: 3.0.0
