@@ -215,13 +215,32 @@ bool sleeping_hours(struct tm& now) {
   return now.tm_hour < 8 || now.tm_hour >= 21;
 }
 
+// Deep sleep period in minutes, wake ups are aligned to it
+const uint8_t sleep_interval_min = 10;
+
+// Seconds left until the nearest moment when the number of minutes
+// is a multiple of sleep_interval_min.
+// One extra second is added to avoid waking up slightly too early,
+// which would cause an additional short sleep cycle.
+uint32_t time_to_next_interval(const tm& now) {
+  uint32_t interval = (uint32_t)sleep_interval_min * 60;
+  uint32_t passed = (now.tm_min % sleep_interval_min) * 60 + now.tm_sec;
+  return interval - passed + 1;
+}
+
 void deep_sleep() {
   battery.flush();
-  esp_sleep_enable_timer_wakeup(600000000); // 10 mins
+  struct tm now;
+  uint64_t sleep_us = (uint64_t)sleep_interval_min * 60 * 1000000;
+  if (get_rtc_time(&now))
+    sleep_us = (uint64_t)time_to_next_interval(now) * 1000000;
+  else
+    ESP_LOGW(TAG, "No RTC time, sleeping for the whole interval");
   // esp_sleep_enable_ext1_wakeup(
   //     BTN_PIN_MASK,
   //     ESP_EXT1_WAKEUP_ANY_HIGH); // enable deep sleep wake on button press
-  ESP_LOGI(TAG, "Deeply sleeping");
+  ESP_LOGI(TAG, "Deeply sleeping for %u seconds", (unsigned)(sleep_us / 1000000));
+  esp_sleep_enable_timer_wakeup(sleep_us);
   esp_deep_sleep_start();
 }
 
