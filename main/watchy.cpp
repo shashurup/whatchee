@@ -40,6 +40,7 @@ RTC_DATA_ATTR time_t boot_time = 0;
 RTC_DATA_ATTR uint8_t prev_day = 0;
 RTC_DATA_ATTR uint8_t prev_hour = 0;
 RTC_DATA_ATTR uint8_t prev_minute = 0;
+RTC_DATA_ATTR bool prev_sleeping = false;
 int screen;
 bool screen_changed;
 const char* displayed_notification;
@@ -60,11 +61,19 @@ void sync_current_time(tm* subj) {
   }
 }
 
+// index of the minutes units digit in the "HH:MM" string
+#define MIN_UNIT_IDX 4
+
 void draw_main_screen(tm* time, bool valid) {
   display.fillScreen(EPD_WHITE);
   char hour_min[] = "--:--";
-  if (valid)
+  if (valid) {
     sprintf(hour_min, "%02d:%02d", time->tm_hour, time->tm_min);
+    // During deep sleep the screen is updated only every 10 minutes,
+    // so the units of minutes are unknown most of the time
+    if (sleeping)
+      hour_min[MIN_UNIT_IDX] = '-';
+  }
   SET_FONT(typography, C059_Bold37pt);
   uint16_t y = 40;
   uint16_t hm_y = y;
@@ -79,7 +88,7 @@ void draw_main_screen(tm* time, bool valid) {
     sprintf(day_month, "%s %d %s",
             wdays[time->tm_wday], time->tm_mday, months[time->tm_mon]);
   SET_FONT(typography, ter_x32b_pcf32pt);
-  y += 16;
+  y += 20;
   y += typography.PrintCentered(day_month, y);
 
   y += 10;
@@ -100,6 +109,7 @@ void draw_main_screen(tm* time, bool valid) {
     uint32_t upd_h = hm_h + 15;
     if (!valid ||
         prev_hour != time->tm_hour ||
+        prev_sleeping != sleeping ||
         screen_changed ||
         prev_connected != connected) {
       // the whole screen each hour
@@ -273,6 +283,7 @@ void idle_tasks() {
   else if (screen == MAIN_SCREEN) {
     if (!valid ||
         now.tm_min != prev_minute ||
+        prev_sleeping != sleeping ||
         prev_connected != connected ||
         screen_changed) {
       ESP_LOGI(TAG, "Updating main screen");
@@ -290,6 +301,7 @@ void idle_tasks() {
     prev_hour = now.tm_hour;
     prev_minute = now.tm_min;
   }
+  prev_sleeping = sleeping;
   screen_changed = false;
 
   if (ringing) {
@@ -344,6 +356,7 @@ extern "C" void app_main()
     prev_day = 0;
     prev_hour = 0;
     prev_minute = 0;
+    prev_sleeping = false;
   }
   setup_nvs();
   setup_misc_hw();

@@ -18,6 +18,10 @@ class Typography {
   int font_page_count;
   T &target;
   const UnicodeFont* current_page = 0;
+  // Distance from the top of a text line to the baseline.  It must be the
+  // same for all glyphs and all pages of a font, otherwise glyphs with a
+  // small bitmap (':', '-', ...) end up aligned to the top of the line.
+  int16_t baseline = 0;
   int16_t x = 0;
   int16_t y = 0;
   uint16_t fg = 0;
@@ -44,6 +48,16 @@ class Typography {
     font = subj;
     font_page_count = page_count;
     current_page = 0;
+    // Ascent of the font: the largest distance between the baseline and the
+    // topmost pixel of a glyph.  Note that the glyph array of a page is
+    // indexed from 0, while base_font.first/last are character codes.
+    baseline = 0;
+    for (int p = 0; p < page_count; ++p) {
+      const GFXfont &f = subj[p].base_font;
+      for (int i = 0; i <= f.last - f.first; ++i)
+        if (-f.glyph[i].yOffset > baseline)
+          baseline = -f.glyph[i].yOffset;
+    }
   }
 
   void SetCursor(int16_t _x, int16_t _y) {
@@ -100,7 +114,7 @@ class Typography {
       if (fit && y > (y_start + max_height))
         return;
       if (!dry_run)
-        target.drawChar(x, y + glyph->height,
+        target.drawChar(x, y + baseline,
                         sym - current_page->page, fg, bg, 1);
       x += glyph->xAdvance;
       if (glyph->height > line_height)
