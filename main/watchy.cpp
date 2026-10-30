@@ -348,7 +348,7 @@ extern "C" void app_main()
   sleeping = false;
   bool refresh = false;
 
-  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause(); // get wake up reason
+  uint32_t wakeup_reason = esp_sleep_get_wakeup_causes(); // get wake up reason
   ESP_LOGI(TAG, "Wakeup reason: %d", wakeup_reason);
   if (wakeup_reason == 0) {
     refresh = true;
