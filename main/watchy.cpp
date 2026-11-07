@@ -96,6 +96,12 @@ void draw_main_screen(tm* time, bool valid) {
     typography.PrintCentered("сон", y);
   else if (!connected)
     typography.PrintCentered("разрыв", y);
+  else {
+    uint32_t counter = step_counter();
+    char counter_str[20];
+    sprintf(counter_str, "%lu", counter);
+    typography.PrintCentered(counter_str, y);
+  }
 
   if (valid && prev_day != time->tm_mday)
     display.update();
@@ -260,8 +266,10 @@ void idle_tasks() {
   if (valid) {
     battery.measure(&now);
     sleeping = sleeping_hours(now);
-    if (now.tm_hour != prev_hour)
+    if (now.tm_hour != prev_hour) {
       send_battery(battery.get_level());
+      send_step_counter(step_counter());
+    }
     if (!boot_time) {
       ESP_LOGI(TAG, "RTC time: %u-%u-%u %u:%u:%u (%d)",
                now.tm_year, now.tm_mon, now.tm_mday,
@@ -406,6 +414,7 @@ extern "C" void app_main()
         case CLIENT_SUBSCRIBED:
           send_info();
           send_battery(battery.get_level());
+          send_step_counter(step_counter());
           break;
         case CLIENT_TIME: {
           tm* t = (tm *)msg.data;

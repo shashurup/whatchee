@@ -6,3 +6,5 @@ dependencies:
     git: git@github.com:martinberlin/Adafruit-GFX-Library-ESP-IDF.git
   pcf8563:
     git: git@github.com:tuupola/pcf8563.git
+  lewisxhe/sensorlib:
+    git: git@github.com:lewisxhe/SensorLib.git

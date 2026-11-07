@@ -1,6 +1,7 @@
 #include "misc_hw.h"
 #include <driver/gpio.h>
 #include <esp_log.h>
+#include <esp_rom_sys.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -10,6 +11,8 @@
 #include <pcf8563.h>
 #include <cstring>
 #include <nvs_flash.h>
+#include <bosch/bma4xx/bma4_defs.h>
+#include <bosch/bma4xx/bma423.h>
 
 #include "utils.h"
 
@@ -154,7 +157,7 @@ i2c_master_bus_config_t i2c_mst_config = {
 };
 i2c_master_bus_handle_t bus_handle;
 
-i2c_device_config_t dev_cfg = {
+i2c_device_config_t pcf8563_cfg = {
     .dev_addr_length = I2C_ADDR_BIT_LEN_7,
     .device_address = 0x51,
     .scl_speed_hz = 100000,
@@ -162,17 +165,17 @@ i2c_device_config_t dev_cfg = {
     .flags = {.disable_ack_check = 1}
 };
 
-i2c_master_dev_handle_t dev_handle;
+i2c_master_dev_handle_t pcf8563_handle;
 
 int32_t i2c_read(void *handle, uint8_t address, uint8_t reg, uint8_t *buffer, uint16_t size) {
-  return i2c_master_transmit_receive(dev_handle, &reg, 1, buffer, size, -1);
+  return i2c_master_transmit_receive(pcf8563_handle, &reg, 1, buffer, size, -1);
 }
 
 int32_t i2c_write(void *handle, uint8_t address, uint8_t reg, const uint8_t *buffer, uint16_t size) {
   uint8_t* buf = (uint8_t *)malloc(size + 1);
   buf[0] = reg;
   memcpy(buf + 1, buffer, size);
-  int32_t err = i2c_master_transmit(dev_handle, buf, size + 1, -1);
+  int32_t err = i2c_master_transmit(pcf8563_handle, buf, size + 1, -1);
   free(buf);
   return err;
 }
@@ -274,16 +277,186 @@ void setup_buttons() {
   }
 }
 
-void setup_rtc() {
+void setup_i2c() {
   int err = i2c_new_master_bus(&i2c_mst_config, &bus_handle);
   if (err)
     ESP_LOGE(__FILE__, "Master bus init error, %d", err);
-  err = i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
+}
+
+void setup_rtc() {
+  int err = i2c_master_bus_add_device(bus_handle, &pcf8563_cfg, &pcf8563_handle);
   if (err)
-    ESP_LOGE(__FILE__, "Add i2c device error, %d", err);
+    ESP_LOGE(__FILE__, "Add RTC i2c device error, %d", err);
   err = pcf8563_init(&pcf);
   if (err)
     ESP_LOGE(__FILE__, "PCF8563 init error, %d", err);
+}
+
+i2c_device_config_t bma423_cfg = {
+    .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+    .device_address = BMA4_I2C_ADDR_PRIMARY,
+    .scl_speed_hz = 100000,
+    .scl_wait_us = 0,
+    .flags = {.disable_ack_check = 0}
+};
+
+i2c_master_dev_handle_t bma423_handle;
+
+BMA4_INTF_RET_TYPE bma_read(uint8_t reg_addr, uint8_t *read_data,
+                            uint32_t len, void *intf) {
+  return i2c_master_transmit_receive(bma423_handle, &reg_addr, 1,
+                                     read_data, len, -1);
+}
+
+BMA4_INTF_RET_TYPE bma_write(uint8_t reg_addr, const uint8_t *read_data,
+                             uint32_t len, void *intf) {
+  uint8_t* buf = (uint8_t *)malloc(len + 1);
+  buf[0] = reg_addr;
+  memcpy(buf + 1, read_data, len);
+  int32_t err = i2c_master_transmit(bma423_handle, buf, len + 1, -1);
+  free(buf);
+  return err;
+}
+
+void bma_delay(uint32_t delay, void* intf) {
+  esp_rom_delay_us(delay);
+}
+
+bma4_dev bma4 = {
+  .intf           = BMA4_I2C_INTF,
+  .read_write_len = 8,
+  .bus_read       = bma_read,
+  .bus_write      = bma_write,
+  .delay_us       = bma_delay,
+  // this must be done inside bma423.c
+  // but for some reason isn't
+  .config_size    = 6144
+};
+
+bool setup_accel() {
+  
+  int err = i2c_master_bus_add_device(bus_handle, &bma423_cfg, &bma423_handle);
+  if (err) {
+    ESP_LOGE(__FILE__, "Add BMA423 i2c device error, %d", err);
+    return false;
+  }
+
+  unsigned res;
+  res = bma4_soft_reset(&bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to soft reset: %u", res);
+    return false;
+  }
+
+  res = bma423_init(&bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to initialize: %u", res);
+    return false;
+  }
+  ESP_LOGI(__FILE__, "BMA chip id: %u", bma4.chip_id);
+
+  res = bma423_write_config_file(&bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to configure: %u", res);
+    return false;
+  }
+
+  struct bma4_int_pin_config config = {0};
+  config.edge_ctrl = BMA4_LEVEL_TRIGGER;
+  config.lvl       = BMA4_ACTIVE_HIGH;
+  config.od        = BMA4_PUSH_PULL;
+  config.output_en = BMA4_OUTPUT_ENABLE;
+  config.input_en  = BMA4_INPUT_DISABLE;
+
+  res = bma4_set_int_pin_config(&config, BMA4_INTR1_MAP, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to set int config: %u", res);
+    return false;
+  }
+
+  res = bma4_set_interrupt_mode(BMA4_LATCH_MODE, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to set int mode: %u", res);
+    return false;
+  }
+  
+  struct bma4_accel_config cfg = {0};
+  cfg.odr = BMA4_OUTPUT_DATA_RATE_50HZ; // Consult datasheet
+  cfg.range = BMA4_ACCEL_RANGE_2G;
+  cfg.bandwidth = BMA4_ACCEL_NORMAL_AVG4;
+  cfg.perf_mode = BMA4_CONTINUOUS_MODE; // TODO decide which to use
+  res = bma4_set_accel_config(&cfg, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to configure the accelerometer: %u", res);
+    return false;
+  }
+
+  res = bma4_set_accel_enable(BMA4_ENABLE, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to enable the accelerometer: %u", res);
+    return false;
+  }
+
+  struct bma423_axes_remap remap_data = {0};
+  remap_data.x_axis      = 1;
+  remap_data.x_axis_sign = 0xFF;
+  remap_data.y_axis      = 0;
+  remap_data.y_axis_sign = 0xFF;
+  remap_data.z_axis      = 2;
+  remap_data.z_axis_sign = 0xFF;
+  res = bma423_set_remap_axes(&remap_data, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to remap axes: %u", res);
+    return false;
+  }
+
+  res = bma423_step_detector_enable(BMA4_ENABLE, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to enable step detector: %u", res);
+    return false;
+  }
+
+  res = bma423_feature_enable(BMA423_STEP_CNTR, TRUE, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to enable step counter: %u", res);
+    return false;
+  }
+
+  // struct bma423_anymotion_config acfg;
+  // acfg.duration = 50 * 60 * 10; // 10 minutes
+  // acfg.threshold = 0xaa;
+  // acfg.nomotion_sel = 1;
+  // res = bma423_set_any_motion_config(&acfg, &bma4);
+
+  // res = bma423_map_interrupt(BMA4_INTR1_MAP, BMA423_ANY_NO_MOTION_INT, 1, &bma4);
+  // if (res != BMA4_OK) {
+  //   ESP_LOGE(__FILE__, "BMA423 failed to enable any motion interrupt: %u", res);
+  //   return false;
+  // }
+
+  ESP_LOGI(__FILE__, "BMA423 is ready");
+
+  return true;
+}
+
+void hibernate_accel() {
+  
+}
+
+void reset_step_counter() {
+  uint16_t res = bma423_reset_step_counter(&bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to reset step counter: %u", res);
+  }
+}
+
+uint32_t step_counter() {
+  uint32_t counter = 0;
+  uint16_t res = bma423_step_counter_output(&counter, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to get step counter: %u", res);
+  }
+  return counter;
 }
 
 void setup_vib_motor() {
@@ -296,5 +469,7 @@ void setup_misc_hw() {
   setup_buttons();
   setup_vib_motor();
   setup_battery_adc();
+  setup_i2c();
   setup_rtc();
+  setup_accel();
 }

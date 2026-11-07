@@ -17,6 +17,16 @@ dependencies:
     source:
       type: idf
     version: 6.0.0
+  lewisxhe/sensorlib:
+    component_hash: c5e4c45ea6f4cf107f2ea8b5e6c4a2d723c7d8cd1875693346a9c342ad1e606a
+    dependencies:
+    - name: idf
+      version: '>=4.4'
+    source:
+      git: git@github.com:lewisxhe/SensorLib.git
+      path: .
+      type: git
+    version: dff98e79753dedd7ba709d1e92d71b4353c55005
   pcf8563:
     component_hash: ce7c9804c784bb8a276aef1cea2619ccc9800c6ff94c3727e14e14946d91f633
     dependencies: []
@@ -28,7 +38,8 @@ dependencies:
 direct_dependencies:
 - Adafruit-GFX
 - calepd
+- lewisxhe/sensorlib
 - pcf8563
-manifest_hash: 286eee260dd552aeaf0e001bfbac64de92f2b24c86ddec96016281fe4908f203
+manifest_hash: e601bccd7aed308eb13641bfb42e29370ed0c52b2a2b1aaa36c00411ebe3a8d4
 target: esp32
 version: 3.0.0

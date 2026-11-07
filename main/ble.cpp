@@ -642,6 +642,14 @@ void send_battery(uint8_t level) {
   send_command(batCmd, 8);
 }
 
+void send_step_counter(uint32_t subj) {
+  uint8_t steps_cmd[] = {
+		0xAB, 0x00, 0x0E, 0xFF, 0x51, 0x08,
+		(uint8_t)(subj >> 16), (uint8_t)(subj >> 8), (uint8_t)(subj),
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  send_command(steps_cmd, 17);
+}
+
 void setup_ble(const char* name) {
     /* Local variables */
     int rc;

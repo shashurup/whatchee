@@ -26,4 +26,5 @@ void send_info();
 
 void send_battery(uint8_t level);
 
+void send_step_counter(uint32_t subj);
 #endif // BLE_H

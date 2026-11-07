@@ -2814,6 +2814,178 @@ CONFIG_WL_SECTOR_SIZE_4096=y
 # default:
 CONFIG_WL_SECTOR_SIZE=4096
 # end of Wear Levelling
+
+#
+# SensorLib Configuration
+#
+# default:
+CONFIG_SENSORLIB_ESP_IDF_NEW_API=y
+# default:
+# CONFIG_SENSORLIB_ESP_IDF_OLD_API is not set
+
+#
+# Driver exclusion
+#
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_ALL is not set
+
+#
+# Driver families
+#
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_IMU is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_ACCELEROMETER is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_MAGNETOMETER is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_LIGHT_SENSOR is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_RTC is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_TOUCH is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_HAPTIC is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_PMIC is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_GAUGE is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_IO_EXPANDER is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_ACTUATOR is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_FINGER_NAVIGATION is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_WIRE_HELPER is not set
+# end of Driver families
+
+#
+# IMU
+#
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_QMI8658 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_BHI is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_BHI260 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_BHI260_KLIO is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_BHI360 is not set
+# end of IMU
+
+#
+# Accelerometer
+#
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_BMA4XX is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_BMA422 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_BMA423 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_BMA456H is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_BMA4XX_EXTRA is not set
+# end of Accelerometer
+
+#
+# Magnetometer and light
+#
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_BMM150 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_QMC5883L is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_QMC5883P is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_QMC6309 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_QMC6310 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_CM32181 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_LTR553 is not set
+# end of Magnetometer and light
+
+#
+# RTC
+#
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_PCF8563 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_PCF85063 is not set
+# end of RTC
+
+#
+# Touch
+#
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_TOUCH_CST226 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_TOUCH_CST816 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_TOUCH_CST92XX is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_TOUCH_CST3530 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_TOUCH_CSTXXX is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_TOUCH_CHSC5816 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_TOUCH_FT6X36 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_TOUCH_GT911 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_TOUCH_GT9895 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_TOUCH_HI8561 is not set
+# end of Touch
+
+#
+# Power and haptic
+#
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_HAPTIC_DRV2605 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_HAPTIC_AW86224 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_PMIC_SY6970 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_PMIC_BQ25896 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_PMIC_AXP192 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_PMIC_AXP202 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_PMIC_AXP2101 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_PMIC_AXP517 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_GAUGE_AXP2602 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_GAUGE_BQ27220 is not set
+# end of Power and haptic
+
+#
+# IO, actuator and navigation
+#
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_IO_EXPANDER_XL9555 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_IO_EXPANDER_PCA9570 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_IO_EXPANDER_AW9523 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_IO_EXPANDER_SPI is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_AW9364 is not set
+# default:
+# CONFIG_SENSORLIB_EXCLUDE_PAWA350 is not set
+# end of IO, actuator and navigation
+# end of Driver exclusion
+# end of SensorLib Configuration
 # end of Component config
 
 # CONFIG_IDF_EXPERIMENTAL_FEATURES is not set

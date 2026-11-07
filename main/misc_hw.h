@@ -46,3 +46,9 @@ class Battery {
   uint8_t get_discharge_rate();
   void flush();
 };
+
+void hibernate_accel();
+
+uint32_t step_counter();
+
+void reset_step_counter();
