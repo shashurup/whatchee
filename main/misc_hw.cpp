@@ -439,8 +439,23 @@ bool setup_accel() {
   return true;
 }
 
-void hibernate_accel() {
-  
+bool hibernate_accel() {
+  struct bma4_accel_config cfg = {0};
+  cfg.odr = BMA4_OUTPUT_DATA_RATE_0_78HZ;
+  cfg.range = BMA4_ACCEL_RANGE_2G;
+  cfg.bandwidth = BMA4_ACCEL_NORMAL_AVG4;
+  cfg.perf_mode = BMA4_CIC_AVG_MODE; // Not sure why, but this is low power
+  unsigned res = bma4_set_accel_config(&cfg, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to configure the accelerometer: %u", res);
+    return false;
+  }
+  res = bma4_set_advance_power_save(1, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to set advanced power save mode: %u", res);
+    return false;
+  }
+  return true;
 }
 
 void reset_step_counter() {
@@ -452,9 +467,11 @@ void reset_step_counter() {
 
 uint32_t step_counter() {
   uint32_t counter = 0;
-  uint16_t res = bma423_step_counter_output(&counter, &bma4);
-  if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to get step counter: %u", res);
+  if (bma4.chip_id) {
+    uint16_t res = bma423_step_counter_output(&counter, &bma4);
+    if (res != BMA4_OK) {
+      ESP_LOGE(__FILE__, "BMA423 failed to get step counter: %u", res);
+    }
   }
   return counter;
 }
@@ -471,5 +488,4 @@ void setup_misc_hw() {
   setup_battery_adc();
   setup_i2c();
   setup_rtc();
-  setup_accel();
 }

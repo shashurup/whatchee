@@ -47,7 +47,9 @@ class Battery {
   void flush();
 };
 
-void hibernate_accel();
+bool setup_accel();
+
+bool hibernate_accel();
 
 uint32_t step_counter();
 

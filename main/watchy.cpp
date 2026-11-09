@@ -246,6 +246,7 @@ uint32_t time_to_next_interval(const tm& now) {
 
 void deep_sleep() {
   battery.flush();
+  hibernate_accel();
   struct tm now;
   uint64_t sleep_us = (uint64_t)sleep_interval_min * 60 * 1000000;
   if (get_rtc_time(&now))
@@ -373,6 +374,7 @@ extern "C" void app_main()
   idle_tasks();
   setup_pm();
   setup_main_queue();
+  setup_accel();
   setup_ble("Whatcheee");
 
   // notifications.add("Довольно короткое сообщение №1 123456 code");
