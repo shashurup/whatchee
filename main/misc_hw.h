@@ -49,9 +49,13 @@ class Battery {
   void flush();
 };
 
-bool setup_accel();
+bool add_accel_device();
 
-bool setup_no_motion_interrupt();
+bool wakeup_accel();
+
+bool init_accel();
+
+bool setup_accel();
 
 bool hibernate_accel();
 

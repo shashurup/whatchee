@@ -355,12 +355,12 @@ extern "C" void app_main()
   disconnect_count = 0;
   ringing = false;
   sleeping = false;
-  bool refresh = false;
+  bool poweron = false;
 
   uint32_t wakeup_reason = esp_sleep_get_wakeup_causes(); // get wake up reason
   ESP_LOGI(TAG, "Wakeup reason: %d", wakeup_reason);
   if (wakeup_reason == 0) {
-    refresh = true;
+    poweron = true;
     boot_time = 0;
     prev_day = 0;
     prev_hour = 0;
@@ -369,14 +369,17 @@ extern "C" void app_main()
   }
   setup_nvs();
   setup_misc_hw();
+  add_accel_device();
+  wakeup_accel();
+   if (poweron)
+    init_accel();
   display.init();
-  display.setRefresh(refresh);
+  display.setRefresh(poweron);
   idle_tasks();
   setup_pm();
   setup_main_queue();
   setup_accel();
   setup_ble("Whatcheee");
-  //setup_no_motion_interrupt();
 
   // notifications.add("Довольно короткое сообщение №1 123456 code");
   // notifications.add("Quite short test message 2\nwith line breaks и т.д. и т.р. and so on");
