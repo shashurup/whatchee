@@ -376,6 +376,7 @@ extern "C" void app_main()
   setup_main_queue();
   setup_accel();
   setup_ble("Whatcheee");
+  //setup_no_motion_interrupt();
 
   // notifications.add("Довольно короткое сообщение №1 123456 code");
   // notifications.add("Quite short test message 2\nwith line breaks и т.д. и т.р. and so on");
@@ -412,6 +413,9 @@ extern "C" void app_main()
           break;
         case BUTTON_RELEASED:
           ESP_LOGI(TAG, "Button %u released", (unsigned)msg.data);
+          break;
+        case ACCEL_NO_MOTION:
+          ESP_LOGI(TAG, "No motion for 2.5 minutes");
           break;
         case CLIENT_SUBSCRIBED:
           send_info();

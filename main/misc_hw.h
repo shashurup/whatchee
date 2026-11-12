@@ -11,6 +11,8 @@
 #define BUTTON_CHANGED 1u
 #define BUTTON_PRESSED 2u
 #define BUTTON_RELEASED 3u
+#define ACCEL_INTR 4u
+#define ACCEL_NO_MOTION 5u
 
 void vibrate(uint8_t intervalMs, uint8_t length);
 
@@ -48,6 +50,8 @@ class Battery {
 };
 
 bool setup_accel();
+
+bool setup_no_motion_interrupt();
 
 bool hibernate_accel();
 

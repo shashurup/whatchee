@@ -21,6 +21,7 @@
 #define BUTTON_BACK_GPIO GPIO_NUM_25
 #define BUTTON_UP_GPIO GPIO_NUM_35
 #define BUTTON_DOWN_GPIO GPIO_NUM_4
+#define ACCEL_GPIO GPIO_NUM_14
 #define ALL_BUTTONS ((1ULL << BUTTON_MENU_GPIO) | (1ULL << BUTTON_BACK_GPIO) | (1ULL << BUTTON_UP_GPIO) | (1ULL << BUTTON_DOWN_GPIO))
 #define BOUNCE_TIMEOUT 32
 
@@ -135,10 +136,17 @@ void button_handler(void* arg) {
   xQueueSendFromISR(main_queue, &msg, NULL);
 }
 
+void on_accel_intr();
+
 bool handle_misc_hw_events(Message msg) {
   if (msg.type == BUTTON_CHANGED) {
     ESP_LOGD(__FILE__, "Button %u has changed", (unsigned)msg.data);
     debounce((unsigned)msg.data);
+    return true;
+  }
+  if (msg.type == ACCEL_INTR) {
+    ESP_LOGI(__FILE__, "BMA423 interrupt");
+    on_accel_intr();
     return true;
   }
   return false;
@@ -264,13 +272,16 @@ void setup_battery_adc() {
   ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, ADC_CHANNEL_6, &config));
 }
 
-void setup_buttons() {
+void setup_gpio() {
   gpio_config_t io_conf = {}; 
   io_conf.intr_type = GPIO_INTR_HIGH_LEVEL;
-  io_conf.pin_bit_mask = ALL_BUTTONS;
+  io_conf.pin_bit_mask = ALL_BUTTONS | (1ULL << ACCEL_GPIO);
   io_conf.mode = GPIO_MODE_INPUT;
   gpio_config(&io_conf);
   gpio_install_isr_service(0);
+}
+
+void setup_buttons() {
   for (unsigned i = 0; i < 4; i++) {
     gpio_wakeup_enable(buttons_gpio[i], GPIO_INTR_HIGH_LEVEL);
     gpio_isr_handler_add(buttons_gpio[i], button_handler, (void*) i);
@@ -333,6 +344,12 @@ bma4_dev bma4 = {
   .config_size    = 6144
 };
 
+void accel_intr_handler(void* arg) {
+  gpio_intr_disable(ACCEL_GPIO);
+  struct Message msg = {ACCEL_INTR, 0};
+  xQueueSendFromISR(main_queue, &msg, NULL);
+}
+
 bool setup_accel() {
   
   int err = i2c_master_bus_add_device(bus_handle, &bma423_cfg, &bma423_handle);
@@ -361,25 +378,6 @@ bool setup_accel() {
     return false;
   }
 
-  struct bma4_int_pin_config config = {0};
-  config.edge_ctrl = BMA4_LEVEL_TRIGGER;
-  config.lvl       = BMA4_ACTIVE_HIGH;
-  config.od        = BMA4_PUSH_PULL;
-  config.output_en = BMA4_OUTPUT_ENABLE;
-  config.input_en  = BMA4_INPUT_DISABLE;
-
-  res = bma4_set_int_pin_config(&config, BMA4_INTR1_MAP, &bma4);
-  if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to set int config: %u", res);
-    return false;
-  }
-
-  res = bma4_set_interrupt_mode(BMA4_LATCH_MODE, &bma4);
-  if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to set int mode: %u", res);
-    return false;
-  }
-  
   struct bma4_accel_config cfg = {0};
   cfg.odr = BMA4_OUTPUT_DATA_RATE_50HZ; // Consult datasheet
   cfg.range = BMA4_ACCEL_RANGE_2G;
@@ -422,30 +420,89 @@ bool setup_accel() {
     return false;
   }
 
-  // struct bma423_anymotion_config acfg;
-  // acfg.duration = 50 * 60 * 10; // 10 minutes
-  // acfg.threshold = 0xaa;
-  // acfg.nomotion_sel = 1;
-  // res = bma423_set_any_motion_config(&acfg, &bma4);
-
-  // res = bma423_map_interrupt(BMA4_INTR1_MAP, BMA423_ANY_NO_MOTION_INT, 1, &bma4);
-  // if (res != BMA4_OK) {
-  //   ESP_LOGE(__FILE__, "BMA423 failed to enable any motion interrupt: %u", res);
-  //   return false;
-  // }
-
   ESP_LOGI(__FILE__, "BMA423 is ready");
 
   return true;
 }
 
+bool setup_no_motion_interrupt() {
+  struct bma4_int_pin_config config = {0};
+  config.edge_ctrl = BMA4_LEVEL_TRIGGER;
+  config.lvl       = BMA4_ACTIVE_HIGH;
+  config.od        = BMA4_PUSH_PULL;
+  config.output_en = BMA4_OUTPUT_ENABLE;
+  config.input_en  = BMA4_INPUT_DISABLE;
+
+  unsigned res = bma4_set_int_pin_config(&config, BMA4_INTR1_MAP, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to set int config: %u", res);
+    return false;
+  }
+
+  res = bma4_set_interrupt_mode(BMA4_LATCH_MODE, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to set int mode: %u", res);
+    return false;
+  }
+  
+  res = bma423_feature_enable(BMA423_NO_MOTION, TRUE, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to enable no motion: %u", res);
+    return false;
+  }
+
+  res = bma423_feature_enable(BMA423_ANY_MOTION, TRUE, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to enable any motion: %u", res);
+    return false;
+  }
+
+  struct bma423_anymotion_config acfg;
+  acfg.duration = 50 * 150; // 2.5 minutes
+  acfg.threshold = 0xaa;
+  acfg.nomotion_sel = 1;
+  res = bma423_set_any_motion_config(&acfg, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to anymotion config: %u", res);
+    return false;
+  }
+  
+  res = bma423_anymotion_enable_axis(BMA423_ALL_AXIS_EN, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to enable anymotion axis: %u", res);
+    return false;
+  }
+
+  res = bma423_map_interrupt(BMA4_INTR1_MAP, BMA423_ANY_NO_MOTION_INT, 1, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to enable any motion interrupt: %u", res);
+    return false;
+  }
+
+  gpio_wakeup_enable(ACCEL_GPIO, GPIO_INTR_HIGH_LEVEL);
+  gpio_isr_handler_add(ACCEL_GPIO, accel_intr_handler, 0);
+
+  return true;
+}
+
 bool hibernate_accel() {
+
+  struct bma423_anymotion_config acfg;
+  acfg.duration = 10;
+  acfg.threshold = 0xaa;
+  acfg.nomotion_sel = 0;
+  unsigned res = bma423_set_any_motion_config(&acfg, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to anymotion config: %u", res);
+    return false;
+  }
+  
   struct bma4_accel_config cfg = {0};
   cfg.odr = BMA4_OUTPUT_DATA_RATE_0_78HZ;
   cfg.range = BMA4_ACCEL_RANGE_2G;
   cfg.bandwidth = BMA4_ACCEL_NORMAL_AVG4;
   cfg.perf_mode = BMA4_CIC_AVG_MODE; // Not sure why, but this is low power
-  unsigned res = bma4_set_accel_config(&cfg, &bma4);
+  res = bma4_set_accel_config(&cfg, &bma4);
   if (res != BMA4_OK) {
     ESP_LOGE(__FILE__, "BMA423 failed to configure the accelerometer: %u", res);
     return false;
@@ -476,6 +533,17 @@ uint32_t step_counter() {
   return counter;
 }
 
+void on_accel_intr() {
+  uint16_t dummy;
+  unsigned res = bma423_read_int_status(&dummy, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(__FILE__, "BMA423 failed to read interrupt status");
+    return;
+  }
+  struct Message msg = {ACCEL_NO_MOTION, 0};
+  xQueueSend(main_queue, &msg, 0);
+}
+
 void setup_vib_motor() {
   gpio_reset_pin(VIB_MOTOR_PIN);
   gpio_pullup_dis(VIB_MOTOR_PIN);
@@ -483,6 +551,7 @@ void setup_vib_motor() {
 }
 
 void setup_misc_hw() {
+  setup_gpio();
   setup_buttons();
   setup_vib_motor();
   setup_battery_adc();
