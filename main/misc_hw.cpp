@@ -21,10 +21,10 @@
 #define BUTTON_BACK_GPIO GPIO_NUM_25
 #define BUTTON_UP_GPIO GPIO_NUM_35
 #define BUTTON_DOWN_GPIO GPIO_NUM_4
-#define ACCEL_GPIO GPIO_NUM_14
 #define ALL_BUTTONS ((1ULL << BUTTON_MENU_GPIO) | (1ULL << BUTTON_BACK_GPIO) | (1ULL << BUTTON_UP_GPIO) | (1ULL << BUTTON_DOWN_GPIO))
 #define BOUNCE_TIMEOUT 32
 
+static const char* ACCEL_TAG = "accel";
 
 adc_oneshot_unit_handle_t adc_handle; 
 gpio_num_t buttons_gpio[4] = {BUTTON_MENU_GPIO, BUTTON_BACK_GPIO, BUTTON_UP_GPIO, BUTTON_DOWN_GPIO};
@@ -275,7 +275,7 @@ void setup_battery_adc() {
 void setup_gpio() {
   gpio_config_t io_conf = {}; 
   io_conf.intr_type = GPIO_INTR_HIGH_LEVEL;
-  io_conf.pin_bit_mask = ALL_BUTTONS | BIT(ACCEL_GPIO);
+  io_conf.pin_bit_mask = ALL_BUTTONS;
   io_conf.mode = GPIO_MODE_INPUT;
   gpio_config(&io_conf);
   gpio_install_isr_service(0);
@@ -357,16 +357,7 @@ void accel_intr_handler(void* arg) {
 bool add_accel_device() {
   int err = i2c_master_bus_add_device(bus_handle, &bma423_cfg, &bma423_handle);
   if (err) {
-    ESP_LOGE(__FILE__, "Add BMA423 i2c device error, %d", err);
-    return false;
-  }
-  return true;
-}
-
-bool wakeup_accel() {
-  unsigned res = bma4_set_advance_power_save(BMA4_DISABLE, &bma4);
-  if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to wake up %u", res);
+    ESP_LOGE(ACCEL_TAG, "Add BMA423 i2c device error, %d", err);
     return false;
   }
   return true;
@@ -385,32 +376,40 @@ bool init_accel() {
   unsigned res;
   res = bma4_soft_reset(&bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to soft reset: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to soft reset: %u", res);
     return false;
   }
 
   res = bma423_init(&bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to initialize: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to initialize: %u", res);
     return false;
   }
-  ESP_LOGI(__FILE__, "BMA chip id: %u", bma4.chip_id);
+  ESP_LOGI(ACCEL_TAG, "BMA chip id: %u", bma4.chip_id);
 
   res = bma423_write_config_file(&bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to configure: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to configure: %u", res);
     return false;
   }
 
-  res = basic_accel_config();
+  // At this point powersave mode is enabled (during writing the config)
+  // we let it as is
+
+  struct bma4_accel_config cfg = {0};
+  cfg.odr = BMA4_OUTPUT_DATA_RATE_50HZ; // Consult datasheet
+  cfg.range = BMA4_ACCEL_RANGE_2G;
+  cfg.bandwidth = BMA4_ACCEL_NORMAL_AVG4;
+  cfg.perf_mode = BMA4_CONTINUOUS_MODE; // TODO decide which to use
+  res = bma4_set_accel_config(&cfg, &bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to configure the accelerometer: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to configure the accelerometer: %u", res);
     return false;
   }
 
   res = bma4_set_accel_enable(BMA4_ENABLE, &bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to enable the accelerometer: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to enable the accelerometer: %u", res);
     return false;
   }
 
@@ -423,19 +422,19 @@ bool init_accel() {
   remap_data.z_axis_sign = 0xFF;
   res = bma423_set_remap_axes(&remap_data, &bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to remap axes: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to remap axes: %u", res);
     return false;
   }
 
   res = bma423_step_detector_enable(BMA4_ENABLE, &bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to enable step detector: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to enable step detector: %u", res);
     return false;
   }
 
   res = bma423_feature_enable(BMA423_STEP_CNTR, TRUE, &bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to enable step counter: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to enable step counter: %u", res);
     return false;
   }
 
@@ -448,23 +447,23 @@ bool init_accel() {
 
   res = bma4_set_int_pin_config(&config, BMA4_INTR1_MAP, &bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to set int config: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to set int config: %u", res);
     return false;
   }
 
   res = bma4_set_interrupt_mode(BMA4_LATCH_MODE, &bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to set int mode: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to set int mode: %u", res);
     return false;
   }
 
   res = bma423_map_interrupt(BMA4_INTR1_MAP, BMA423_ANY_NO_MOTION_INT, 1, &bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to enable any motion interrupt: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to enable any motion interrupt: %u", res);
     return false;
   }
 
-  ESP_LOGI(__FILE__, "BMA423 initialization is complete");
+  ESP_LOGI(ACCEL_TAG, "BMA423 initialization is complete");
   return true;
 }
 
@@ -473,47 +472,48 @@ void accel_log_register(uint8_t addr, uint32_t len) {
   uint32_t l = len < 64 ? len : 64;
   if (bma4_read_regs(addr, buf, l, &bma4) == BMA4_OK) {
     for (uint32_t i = 0; i < l; ++i)
-      ESP_LOGI(__FILE__, "BMA423 reg %x, %x = %x", addr, i, buf[i]);
+      ESP_LOGI(ACCEL_TAG, "BMA423 reg %x, %x = %x", addr, i, buf[i]);
   }
 }
 
-bool setup_accel_nomotion() {
-  // this also enables no motion feature
+bool setup_accel_motion(bool motion) {
   struct bma423_anymotion_config acfg;
   // acfg.duration = 50 * 150; // 2.5 minutes
-  acfg.duration = 50 * 65;
+  acfg.duration = motion ? 10 : 50 * 65;
   acfg.threshold = 0xaa;
-  acfg.nomotion_sel = 1;
+  acfg.nomotion_sel = motion ? 0 : 1;
   unsigned res = bma423_set_any_motion_config(&acfg, &bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to anymotion config: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to anymotion config: %u", res);
     return false;
   }
   
   res = bma423_anymotion_enable_axis(BMA423_ALL_AXIS_EN, &bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to enable anymotion axis: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to enable anymotion axis: %u", res);
     return false;
   }
 
   return true;
 }
 
+uint16_t accel_read_int_status() {
+  uint16_t result = 0;
+  if (bma423_read_int_status(&result, &bma4) != BMA4_OK)
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to read interrupt status");
+  return result;
+}
+
 bool setup_accel() {
   
-  unsigned res;
-
-  res = basic_accel_config();
-  if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to configure the accelerometer: %u", res);
-    return false;
-  }
-
-  if (!setup_accel_nomotion())
+  if (!setup_accel_motion(false))
     return false;
 
-  // gpio_output_enable(ACCEL_GPIO);
-  // gpio_intr_enable(ACCEL_GPIO);
+  //ensure no interrupt is latched before enabling it
+  accel_read_int_status();
+
+  gpio_output_enable(ACCEL_GPIO);
+  gpio_intr_enable(ACCEL_GPIO);
   gpio_wakeup_enable(ACCEL_GPIO, GPIO_INTR_HIGH_LEVEL);
   gpio_isr_handler_add(ACCEL_GPIO, accel_intr_handler, 0);
 
@@ -529,33 +529,18 @@ bool setup_accel() {
   accel_log_register(0x58, 1);
   accel_log_register(0x5F, 1);
   
-  ESP_LOGI(__FILE__, "BMA423 is set up");
+  ESP_LOGI(ACCEL_TAG, "BMA423 is set up");
   return true;
 }
 
 bool hibernate_accel() {
-  struct bma4_accel_config cfg = {0};
-  cfg.odr = BMA4_OUTPUT_DATA_RATE_0_78HZ;
-  cfg.range = BMA4_ACCEL_RANGE_2G;
-  cfg.bandwidth = BMA4_ACCEL_NORMAL_AVG4;
-  cfg.perf_mode = BMA4_CIC_AVG_MODE; // Not sure why, but this is low power
-  unsigned res = bma4_set_accel_config(&cfg, &bma4);
-  if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to configure the accelerometer: %u", res);
-    return false;
-  }
-  res = bma4_set_advance_power_save(BMA4_ENABLE, &bma4);
-  if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to set advanced power save mode: %u", res);
-    return false;
-  }
-  return true;
+  return setup_accel_motion(true);
 }
 
 void reset_step_counter() {
   uint16_t res = bma423_reset_step_counter(&bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to reset step counter: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to reset step counter: %u", res);
   }
 }
 
@@ -564,7 +549,7 @@ uint32_t step_counter() {
   if (bma4.chip_id) {
     uint16_t res = bma423_step_counter_output(&counter, &bma4);
     if (res != BMA4_OK) {
-      ESP_LOGE(__FILE__, "BMA423 failed to get step counter: %u", res);
+      ESP_LOGE(ACCEL_TAG, "BMA423 failed to get step counter: %u", res);
     }
   }
   return counter;
@@ -573,20 +558,13 @@ uint32_t step_counter() {
 void on_accel_intr() {
   unsigned res = bma423_feature_enable(BMA423_NO_MOTION, FALSE, &bma4);
   if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to disable nomotion: %u", res);
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to disable nomotion: %u", res);
     return;
   }
-  uint16_t dummy;
-  res = bma423_read_int_status(&dummy, &bma4);
-  if (res != BMA4_OK) {
-    ESP_LOGE(__FILE__, "BMA423 failed to read interrupt status");
-    return;
-  }
+  accel_read_int_status();
   gpio_intr_enable(ACCEL_GPIO);
   struct Message msg = {ACCEL_NO_MOTION, 0};
   xQueueSend(main_queue, &msg, 0);
-
-  //  setup_accel_nomotion();
 }
 
 void setup_vib_motor() {

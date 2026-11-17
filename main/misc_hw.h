@@ -13,6 +13,7 @@
 #define BUTTON_RELEASED 3u
 #define ACCEL_INTR 4u
 #define ACCEL_NO_MOTION 5u
+#define ACCEL_GPIO GPIO_NUM_14
 
 void vibrate(uint8_t intervalMs, uint8_t length);
 
@@ -50,8 +51,6 @@ class Battery {
 };
 
 bool add_accel_device();
-
-bool wakeup_accel();
 
 bool init_accel();
 

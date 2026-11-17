@@ -253,9 +253,8 @@ void deep_sleep() {
     sleep_us = (uint64_t)time_to_next_interval(now) * 1000000;
   else
     ESP_LOGW(TAG, "No RTC time, sleeping for the whole interval");
-  // esp_sleep_enable_ext1_wakeup(
-  //     BTN_PIN_MASK,
-  //     ESP_EXT1_WAKEUP_ANY_HIGH); // enable deep sleep wake on button press
+  esp_sleep_enable_ext1_wakeup_io(BIT(ACCEL_GPIO),
+                                  ESP_EXT1_WAKEUP_ANY_HIGH);
   ESP_LOGI(TAG, "Deeply sleeping for %u seconds", (unsigned)(sleep_us / 1000000));
   esp_sleep_enable_timer_wakeup(sleep_us);
   esp_deep_sleep_start();
@@ -266,7 +265,7 @@ void idle_tasks() {
   bool valid = get_rtc_time(&now);
   if (valid) {
     battery.measure(&now);
-    // sleeping = sleeping_hours(now);
+    sleeping = sleeping_hours(now);
     if (now.tm_hour != prev_hour) {
       send_battery(battery.get_level());
       send_step_counter(step_counter());
@@ -378,7 +377,6 @@ extern "C" void app_main()
   setup_nvs();
   setup_misc_hw();
   add_accel_device();
-  wakeup_accel();
   if (poweron)
     init_accel();
   display.init();
@@ -427,6 +425,7 @@ extern "C" void app_main()
           break;
         case ACCEL_NO_MOTION:
           ESP_LOGI(TAG, "No motion for 2.5 minutes");
+          // deep_sleep();
           break;
         case CLIENT_SUBSCRIBED:
           send_info();
