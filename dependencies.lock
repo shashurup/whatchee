@@ -16,7 +16,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 6.0.0
+    version: 6.1.0
   lewisxhe/sensorlib:
     component_hash: c5e4c45ea6f4cf107f2ea8b5e6c4a2d723c7d8cd1875693346a9c342ad1e606a
     dependencies:

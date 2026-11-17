@@ -266,11 +266,13 @@ void idle_tasks() {
   bool valid = get_rtc_time(&now);
   if (valid) {
     battery.measure(&now);
-    sleeping = sleeping_hours(now);
+    // sleeping = sleeping_hours(now);
     if (now.tm_hour != prev_hour) {
       send_battery(battery.get_level());
       send_step_counter(step_counter());
     }
+    if (now.tm_mday != prev_day)
+      reset_step_counter();
     if (!boot_time) {
       ESP_LOGI(TAG, "RTC time: %u-%u-%u %u:%u:%u (%d)",
                now.tm_year, now.tm_mon, now.tm_mday,
@@ -359,6 +361,12 @@ extern "C" void app_main()
 
   uint32_t wakeup_reason = esp_sleep_get_wakeup_causes(); // get wake up reason
   ESP_LOGI(TAG, "Wakeup reason: %d", wakeup_reason);
+  if (wakeup_reason & BIT(ESP_SLEEP_WAKEUP_TIMER)) {
+    sleeping = true;
+  }
+  if (wakeup_reason & BIT(ESP_SLEEP_WAKEUP_EXT1)) {
+    
+  }
   if (wakeup_reason == 0) {
     poweron = true;
     boot_time = 0;
@@ -371,7 +379,7 @@ extern "C" void app_main()
   setup_misc_hw();
   add_accel_device();
   wakeup_accel();
-   if (poweron)
+  if (poweron)
     init_accel();
   display.init();
   display.setRefresh(poweron);
