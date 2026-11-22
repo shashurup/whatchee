@@ -145,7 +145,7 @@ bool handle_misc_hw_events(Message msg) {
     return true;
   }
   if (msg.type == ACCEL_INTR) {
-    ESP_LOGI(__FILE__, "BMA423 interrupt");
+    ESP_LOGI(ACCEL_TAG, "BMA423 interrupt");
     on_accel_intr();
     return true;
   }
@@ -372,7 +372,7 @@ unsigned basic_accel_config() {
   return bma4_set_accel_config(&cfg, &bma4);
 }
 
-bool init_accel() {
+bool setup_accel() {
   unsigned res;
   res = bma4_soft_reset(&bma4);
   if (res != BMA4_OK) {
@@ -476,13 +476,29 @@ void accel_log_register(uint8_t addr, uint32_t len) {
   }
 }
 
+void accel_log_main_registers() {
+  accel_log_register(0x3, 1);
+  accel_log_register(0x2a, 1);
+  accel_log_register(BMA4_FEATURE_CONFIG_ADDR, 4);
+  accel_log_register(BMA4_ACCEL_CONFIG_ADDR, 1);
+  accel_log_register(BMA4_POWER_CTRL_ADDR, 1);
+  accel_log_register(BMA4_POWER_CONF_ADDR, 1);
+  accel_log_register(BMA4_INT_MAP_1_ADDR, 1);
+  accel_log_register(0x53, 1);
+  accel_log_register(0x55, 1);
+  accel_log_register(0x58, 1);
+  accel_log_register(0x5F, 1);
+  
+}
+
 bool setup_accel_motion(bool motion) {
+  unsigned res;
+
   struct bma423_anymotion_config acfg;
-  // acfg.duration = 50 * 150; // 2.5 minutes
-  acfg.duration = motion ? 10 : 50 * 65;
-  acfg.threshold = 0xaa;
+  acfg.duration = motion ? 10 : 50 * 150; // 2.5 minutes
+  acfg.threshold = 0x55;
   acfg.nomotion_sel = motion ? 0 : 1;
-  unsigned res = bma423_set_any_motion_config(&acfg, &bma4);
+  res = bma423_set_any_motion_config(&acfg, &bma4);
   if (res != BMA4_OK) {
     ESP_LOGE(ACCEL_TAG, "BMA423 failed to anymotion config: %u", res);
     return false;
@@ -497,44 +513,44 @@ bool setup_accel_motion(bool motion) {
   return true;
 }
 
-uint16_t accel_read_int_status() {
+uint16_t accel_read_intr_status() {
   uint16_t result = 0;
   if (bma423_read_int_status(&result, &bma4) != BMA4_OK)
     ESP_LOGE(ACCEL_TAG, "BMA423 failed to read interrupt status");
   return result;
 }
 
-bool setup_accel() {
+bool accel_wait_idle() {
   
+  unsigned res = bma423_feature_enable(BMA423_ANY_MOTION, FALSE, &bma4);
+  if (res != BMA4_OK) {
+    ESP_LOGE(ACCEL_TAG, "BMA423 failed to disable nomotion: %u", res);
+    return false;
+  }
+  esp_rom_delay_us(1000);
+
   if (!setup_accel_motion(false))
     return false;
 
   //ensure no interrupt is latched before enabling it
-  accel_read_int_status();
+  accel_read_intr_status();
 
-  gpio_output_enable(ACCEL_GPIO);
+  gpio_output_disable(ACCEL_GPIO);
+  gpio_input_enable(ACCEL_GPIO);
   gpio_intr_enable(ACCEL_GPIO);
   gpio_wakeup_enable(ACCEL_GPIO, GPIO_INTR_HIGH_LEVEL);
   gpio_isr_handler_add(ACCEL_GPIO, accel_intr_handler, 0);
 
-  accel_log_register(0x3, 1);
-  accel_log_register(0x2a, 1);
-  accel_log_register(BMA4_FEATURE_CONFIG_ADDR, 4);
-  accel_log_register(BMA4_ACCEL_CONFIG_ADDR, 1);
-  accel_log_register(BMA4_POWER_CTRL_ADDR, 1);
-  accel_log_register(BMA4_POWER_CONF_ADDR, 1);
-  accel_log_register(BMA4_INT_MAP_1_ADDR, 1);
-  accel_log_register(0x53, 1);
-  accel_log_register(0x55, 1);
-  accel_log_register(0x58, 1);
-  accel_log_register(0x5F, 1);
-  
+  // accel_log_main_registers();
+
   ESP_LOGI(ACCEL_TAG, "BMA423 is set up");
   return true;
 }
 
 bool hibernate_accel() {
-  return setup_accel_motion(true);
+  bool result = setup_accel_motion(true);
+  // accel_log_main_registers();
+  return result;
 }
 
 void reset_step_counter() {
@@ -561,7 +577,7 @@ void on_accel_intr() {
     ESP_LOGE(ACCEL_TAG, "BMA423 failed to disable nomotion: %u", res);
     return;
   }
-  accel_read_int_status();
+  accel_read_intr_status();
   gpio_intr_enable(ACCEL_GPIO);
   struct Message msg = {ACCEL_NO_MOTION, 0};
   xQueueSend(main_queue, &msg, 0);

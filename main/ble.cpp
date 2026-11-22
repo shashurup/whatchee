@@ -686,3 +686,9 @@ void setup_ble(const char* name) {
     return;
   
 }
+
+void shutdown_ble() {
+  esp_err_t ret = nimble_port_deinit();
+  if (ret != ESP_OK)
+    ESP_LOGE(TAG, "failed to initialize nimble stack, error code: %d ", ret);
+}

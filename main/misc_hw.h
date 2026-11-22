@@ -52,9 +52,9 @@ class Battery {
 
 bool add_accel_device();
 
-bool init_accel();
-
 bool setup_accel();
+
+bool accel_wait_idle();
 
 bool hibernate_accel();
 

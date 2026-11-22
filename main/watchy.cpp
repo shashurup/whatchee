@@ -41,6 +41,7 @@ RTC_DATA_ATTR uint8_t prev_day = 0;
 RTC_DATA_ATTR uint8_t prev_hour = 0;
 RTC_DATA_ATTR uint8_t prev_minute = 0;
 RTC_DATA_ATTR bool prev_sleeping = false;
+RTC_DATA_ATTR uint32_t step_base = 0;
 int screen;
 bool screen_changed;
 const char* displayed_notification;
@@ -97,7 +98,7 @@ void draw_main_screen(tm* time, bool valid) {
   else if (!connected)
     typography.PrintCentered("разрыв", y);
   else {
-    uint32_t counter = step_counter();
+    uint32_t counter = step_counter() + step_base;
     char counter_str[20];
     sprintf(counter_str, "%lu", counter);
     typography.PrintCentered(counter_str, y);
@@ -246,6 +247,7 @@ uint32_t time_to_next_interval(const tm& now) {
 
 void deep_sleep() {
   battery.flush();
+  step_base = step_counter();
   hibernate_accel();
   struct tm now;
   uint64_t sleep_us = (uint64_t)sleep_interval_min * 60 * 1000000;
@@ -256,8 +258,8 @@ void deep_sleep() {
   esp_sleep_enable_ext1_wakeup_io(BIT(ACCEL_GPIO),
                                   ESP_EXT1_WAKEUP_ANY_HIGH);
   ESP_LOGI(TAG, "Deeply sleeping for %u seconds", (unsigned)(sleep_us / 1000000));
-  esp_sleep_enable_timer_wakeup(sleep_us);
-  esp_deep_sleep_start();
+  esp_err_t err = esp_deep_sleep_try(sleep_us);
+  ESP_LOGE(TAG, "Failed to fall asleep deeply, %d", err);
 }
 
 void idle_tasks() {
@@ -265,13 +267,15 @@ void idle_tasks() {
   bool valid = get_rtc_time(&now);
   if (valid) {
     battery.measure(&now);
-    sleeping = sleeping_hours(now);
+    // sleeping = sleeping_hours(now);
     if (now.tm_hour != prev_hour) {
       send_battery(battery.get_level());
-      send_step_counter(step_counter());
+      send_step_counter(step_counter() + step_base);
     }
-    if (now.tm_mday != prev_day)
+    if (now.tm_mday != prev_day) {
       reset_step_counter();
+      step_base = 0;
+    }
     if (!boot_time) {
       ESP_LOGI(TAG, "RTC time: %u-%u-%u %u:%u:%u (%d)",
                now.tm_year, now.tm_mon, now.tm_mday,
@@ -377,14 +381,13 @@ extern "C" void app_main()
   setup_nvs();
   setup_misc_hw();
   add_accel_device();
-  if (poweron)
-    init_accel();
   display.init();
   display.setRefresh(poweron);
   idle_tasks();
   setup_pm();
   setup_main_queue();
   setup_accel();
+  accel_wait_idle();
   setup_ble("Whatcheee");
 
   // notifications.add("Довольно короткое сообщение №1 123456 code");
@@ -425,12 +428,12 @@ extern "C" void app_main()
           break;
         case ACCEL_NO_MOTION:
           ESP_LOGI(TAG, "No motion for 2.5 minutes");
-          // deep_sleep();
+          deep_sleep();
           break;
         case CLIENT_SUBSCRIBED:
           send_info();
           send_battery(battery.get_level());
-          send_step_counter(step_counter());
+          send_step_counter(step_counter() + step_base);
           break;
         case CLIENT_TIME: {
           tm* t = (tm *)msg.data;
