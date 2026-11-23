@@ -247,7 +247,7 @@ uint32_t time_to_next_interval(const tm& now) {
 
 void deep_sleep() {
   battery.flush();
-  step_base = step_counter();
+  step_base += step_counter();
   hibernate_accel();
   struct tm now;
   uint64_t sleep_us = (uint64_t)sleep_interval_min * 60 * 1000000;
