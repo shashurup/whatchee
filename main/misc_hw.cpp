@@ -496,7 +496,7 @@ bool setup_accel_motion(bool motion) {
 
   struct bma423_anymotion_config acfg;
   acfg.duration = motion ? 10 : 50 * 150; // 2.5 minutes
-  acfg.threshold = 0x55;
+  acfg.threshold = 0x37;
   acfg.nomotion_sel = motion ? 0 : 1;
   res = bma423_set_any_motion_config(&acfg, &bma4);
   if (res != BMA4_OK) {
