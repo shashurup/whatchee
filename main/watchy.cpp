@@ -42,10 +42,7 @@ RTC_DATA_ATTR uint8_t prev_hour = 0;
 RTC_DATA_ATTR uint8_t prev_minute = 0;
 RTC_DATA_ATTR uint32_t step_base = 0;
 int screen;
-bool screen_changed;
-const char* displayed_notification;
 bool connected;
-bool prev_connected;
 unsigned disconnect_count;
 bool ringing;
 bool is_sleeping;
@@ -53,33 +50,18 @@ const char *wdays[] = {"Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"};
 const char *months[] = {"Янв", "Фев", "Мар", "Апр", "Мая", "Июня",
                         "Июля", "Авг", "Сен", "Окт", "Ноя", "Дек"};
 
+#define MINUTE_CHANGED 1
+#define DECADE_CHANGED 2
+#define HOUR_CHANGED 4
+#define DAY_CHANGED 8
+#define SCREEN_CHANGED 16
+#define CONNECTION_CHANGED 32
+
 #define NOTHING 0
 #define LAST_DIGIT 1
 #define LAST_TWO_DIGITS 2
 #define WHOLE_SCREEN 3
 #define REFRESH_SCREEN 4
-
-int screen_update_mode(tm* time,
-                       bool is_time_valid,
-                       uint8_t prev_minute,
-                       uint8_t prev_hour,
-                       uint8_t prev_day,
-                       bool prev_is_connected,
-                       bool is_connected) {
-  if (prev_day != time->tm_mday)
-    return REFRESH_SCREEN;
-  if (!is_time_valid)
-    return REFRESH_SCREEN;
-  if (prev_is_connected != is_connected)
-    return WHOLE_SCREEN;
-  if (prev_hour != time->tm_hour)
-    return WHOLE_SCREEN;
-  if (prev_minute / 10 != time->tm_min / 10)
-    return LAST_TWO_DIGITS;
-  if (prev_minute != time->tm_min)
-    return LAST_DIGIT;
-  return NOTHING;
-}
 
 void sync_current_time(tm* subj) {
   if (subj->tm_mday != time_sync_day) {
@@ -256,14 +238,6 @@ void draw_info() {
   display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
 }
 
-void draw_sleeping_screen(int update_mode) {
-  struct tm now;
-  bool valid = get_rtc_time(&now);
-  draw_main_screen(&now, valid, true, step_base,
-                   battery.get_level(), update_mode);
-  display.deepSleep();
-}
-
 // Deep sleep period in minutes, wake ups are aligned to it
 const uint8_t sleep_interval_min = 10;
 
@@ -294,71 +268,6 @@ void deep_sleep() {
   ESP_LOGE(TAG, "Failed to fall asleep deeply, %d", err);
 }
 
-void idle_tasks() {
-  struct tm now;
-  bool valid = get_rtc_time(&now);
-  if (valid) {
-    battery.measure(&now);
-    if (now.tm_hour != prev_hour) {
-      send_battery(battery.get_level());
-      send_step_counter(step_counter() + step_base);
-    }
-    if (now.tm_mday != prev_day) {
-      reset_step_counter();
-      step_base = 0;
-    }
-    if (!boot_time) {
-      ESP_LOGI(TAG, "RTC time: %u-%u-%u %u:%u:%u (%d)",
-               now.tm_year, now.tm_mon, now.tm_mday,
-               now.tm_hour, now.tm_min, now.tm_sec, valid);
-      boot_time = mktime(&now);
-    }
-  }
-  else
-    battery.measure(0);
-
-  if (screen == NOTIFICATION_SCREEN) {
-    if (screen_changed ||
-        (notifications.get_current() &&
-         notifications.get_current() != displayed_notification))
-    draw_notifications();
-    display.deepSleep();
-    displayed_notification = notifications.get_current();
-  }
-  else if (screen == MAIN_SCREEN) {
-    int update_mode = screen_update_mode(&now, valid, prev_minute,
-                                         prev_hour, prev_day,
-                                         prev_connected, connected);
-    ESP_LOGI(TAG, "upd mode %d, %d, %d, %d, %d", prev_minute, prev_hour, prev_day, prev_connected, connected);
-    if (screen_changed)
-      update_mode = WHOLE_SCREEN;
-    ESP_LOGI(TAG, "Updating main screen, mode: %d", update_mode);
-    draw_main_screen(&now, valid, false,
-                     step_counter() + step_base,
-                     battery.get_level(),
-                     update_mode);
-    display.deepSleep();
-  }
-  else if (screen == INFO_SCREEN && screen_changed) {
-    draw_info();
-    display.deepSleep();
-  }
-
-  if (valid) {
-    prev_day = now.tm_mday;
-    prev_hour = now.tm_hour;
-    prev_minute = now.tm_min;
-  }
-  screen_changed = false;
-  prev_connected = connected;
-
-  if (ringing) {
-    // TODO find better solution
-    vibrate(100, 20);
-    ringing = false;
-  }
-}
-
 void setup_pm() {
   esp_pm_config_t pm_config = {
     .max_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
@@ -378,6 +287,66 @@ void setup_nvs() {
   }
 }
 
+int time_changes(tm* subj, int changes) {
+  if (subj->tm_min != prev_minute)
+    changes |= MINUTE_CHANGED;
+  if (subj->tm_min / 10 != prev_minute / 10)
+    changes |= DECADE_CHANGED;
+  if (subj->tm_hour != prev_hour)
+    changes |= HOUR_CHANGED;
+  if (subj->tm_mday != prev_day)
+    changes |= DAY_CHANGED;
+  prev_day = subj->tm_mday;
+  prev_hour = subj->tm_hour;
+  prev_minute = subj->tm_min;
+  return changes;
+}
+
+void update_display(tm* now, bool valid, int changes) {
+  if (changes) {
+    ESP_LOGI(TAG, "Applying changes: %x", changes);
+    if (screen == INFO_SCREEN) {
+      draw_info();
+      display.deepSleep();
+    } else if (screen == NOTIFICATION_SCREEN) {
+      if (notifications.get_current()) {
+        draw_notifications();
+        display.deepSleep();
+      }
+    } else if (screen == MAIN_SCREEN) {
+      int update_mode = NOTHING;
+      if (changes & DAY_CHANGED)
+        update_mode = REFRESH_SCREEN;
+      else if (!valid)
+        update_mode = REFRESH_SCREEN;
+      else if (changes & SCREEN_CHANGED)
+        update_mode = WHOLE_SCREEN;
+      else if (changes & CONNECTION_CHANGED)
+        update_mode = WHOLE_SCREEN;
+      else if (changes & HOUR_CHANGED)
+        update_mode = WHOLE_SCREEN;
+      else if (changes & DECADE_CHANGED)
+        update_mode = LAST_TWO_DIGITS;
+      else if (changes & MINUTE_CHANGED)
+        update_mode = LAST_DIGIT;
+      ESP_LOGI(TAG, "Updating main screen, mode: %d", update_mode);
+      draw_main_screen(now, valid, false,
+                       step_counter() + step_base,
+                       battery.get_level(),
+                       update_mode);
+      display.deepSleep();
+    }
+  }
+}
+
+void draw_sleeping_screen() {
+  struct tm now;
+  bool valid = get_rtc_time(&now);
+  draw_main_screen(&now, valid, true, step_base,
+                   battery.get_level(), WHOLE_SCREEN);
+  display.deepSleep();
+}
+
 extern "C" void app_main()
 {
   ESP_LOGI(TAG, "Enter app_main()");
@@ -385,10 +354,7 @@ extern "C" void app_main()
 
   time_sync_day = 0;
   screen = MAIN_SCREEN;
-  screen_changed = true;
-  displayed_notification = 0;
   connected = false;
-  prev_connected = false;
   disconnect_count = 0;
   ringing = false;
   bool poweron = false;
@@ -408,7 +374,7 @@ extern "C" void app_main()
   display.init();
   display.setRefresh(poweron);
   if (wakeup_reason & BIT(ESP_SLEEP_WAKEUP_TIMER)) {
-    draw_sleeping_screen(LAST_TWO_DIGITS);
+    draw_sleeping_screen();
     deep_sleep();
   }
   setup_pm();
@@ -416,7 +382,6 @@ extern "C" void app_main()
   setup_accel();
   accel_wait_idle();
   setup_ble("Whatcheee");
-  idle_tasks();
 
   // notifications.add("Довольно короткое сообщение №1 123456 code");
   // notifications.add("Quite short test message 2\nwith line breaks и т.д. и т.р. and so on");
@@ -424,80 +389,111 @@ extern "C" void app_main()
   
   ESP_LOGI(TAG, "Battery voltage: %d", battery.get_voltage());
   
+  int interval = minute / portTICK_PERIOD_MS;
+  int changes = SCREEN_CHANGED;
   while(true) {
-    struct Message msg;
-    int interval = minute / portTICK_PERIOD_MS;
-    if (xQueueReceive(main_queue, &msg, interval) == pdTRUE) {
-      if (!handle_misc_hw_events(msg)) {
-        switch (msg.type) {
-        case BUTTON_PRESSED:
-          ESP_LOGI(TAG, "Button %u pressed", (unsigned)msg.data);
-          switch ((unsigned)msg.data) {
-          case BUTTON_BACK:
-            screen = MAIN_SCREEN;
-            screen_changed = true;
-            break;
-          case BUTTON_UP:
-            screen = NOTIFICATION_SCREEN;
-            notifications.prev();
-            break;
-          case BUTTON_DOWN:
-            screen = NOTIFICATION_SCREEN;
-            notifications.next();
-            break;
-          case BUTTON_MENU:
-            screen = INFO_SCREEN;
-            screen_changed = true;
-            break;
-          }
-          break;
-        case BUTTON_RELEASED:
-          ESP_LOGI(TAG, "Button %u released", (unsigned)msg.data);
-          break;
-        case ACCEL_NO_MOTION:
-          ESP_LOGI(TAG, "No motion for 2.5 minutes, falling asleep");
-          draw_sleeping_screen(WHOLE_SCREEN);
-          deep_sleep();
-          break;
-        case CLIENT_SUBSCRIBED:
-          send_info();
-          send_battery(battery.get_level());
-          send_step_counter(step_counter() + step_base);
-          break;
-        case CLIENT_TIME: {
-          tm* t = (tm *)msg.data;
-          ESP_LOGI(TAG, "Got time: %u-%u-%u %u:%u:%u",
-                   t->tm_year, t->tm_mon, t->tm_mday,
-                   t->tm_hour, t->tm_min, t->tm_sec);
-          sync_current_time(t);
-          delete t;
-          break;
-        }
-        case CLIENT_NOTIFICATION: {
-          Notification *notif = (Notification *)msg.data;
-          if (handle_notification(notif)) {
-            screen = NOTIFICATION_SCREEN;
-            screen_changed = true;
-          }
-          delete notif;
-          break;
-        }
-        case CLIENT_FIND:
-          vibrate(50, 10);
-          break;
-        case CLIENT_CONNECTED:
-          connected = true;
-          break;
-        case CLIENT_DISCONNECTED:
-          connected = false;
-          ++disconnect_count;
-          break;
-        }
+    struct tm now;
+    bool valid = get_rtc_time(&now);
+    if (valid) {
+      changes = time_changes(&now, changes);
+
+      if (!boot_time) {
+        ESP_LOGI(TAG, "RTC time: %u-%u-%u %u:%u:%u (%d)",
+                 now.tm_year, now.tm_mon, now.tm_mday,
+                 now.tm_hour, now.tm_min, now.tm_sec, valid);
+        boot_time = mktime(&now);
       }
-      idle_tasks();
     }
-    else 
-      idle_tasks();
+
+    battery.measure(valid ? &now : 0);
+
+    if (changes & HOUR_CHANGED) {
+      send_battery(battery.get_level());
+      send_step_counter(step_counter() + step_base);
+    }
+    if (changes & DAY_CHANGED) {
+      reset_step_counter();
+      step_base = 0;
+    }
+
+    update_display(&now, valid, changes);
+
+    changes = 0;
+    struct Message msg;
+    if (xQueueReceive(main_queue, &msg, interval) == pdTRUE) {
+      if (handle_misc_hw_events(msg))
+        continue;
+      switch (msg.type) {
+      case BUTTON_PRESSED:
+        ESP_LOGI(TAG, "Button %u pressed", (unsigned)msg.data);
+        switch ((unsigned)msg.data) {
+        case BUTTON_BACK:
+          screen = MAIN_SCREEN;
+          changes |= SCREEN_CHANGED;
+          break;
+        case BUTTON_UP:
+          screen = NOTIFICATION_SCREEN;
+          notifications.prev();
+          changes |= SCREEN_CHANGED;
+          break;
+        case BUTTON_DOWN:
+          screen = NOTIFICATION_SCREEN;
+          notifications.next();
+          changes |= SCREEN_CHANGED;
+          break;
+        case BUTTON_MENU:
+          screen = INFO_SCREEN;
+          changes |= SCREEN_CHANGED;
+          break;
+        }
+        break;
+      case BUTTON_RELEASED:
+        ESP_LOGI(TAG, "Button %u released", (unsigned)msg.data);
+        break;
+      case ACCEL_NO_MOTION:
+        ESP_LOGI(TAG, "No motion for 2.5 minutes, falling asleep");
+        draw_main_screen(&now, valid, true, step_base,
+                         battery.get_level(), WHOLE_SCREEN);
+        display.deepSleep();
+        deep_sleep();
+        break;
+      case CLIENT_SUBSCRIBED:
+        send_info();
+        send_battery(battery.get_level());
+        send_step_counter(step_counter() + step_base);
+        break;
+      case CLIENT_TIME: {
+        tm* t = (tm *)msg.data;
+        ESP_LOGI(TAG, "Got time: %u-%u-%u %u:%u:%u",
+                 t->tm_year, t->tm_mon, t->tm_mday,
+                 t->tm_hour, t->tm_min, t->tm_sec);
+        sync_current_time(t);
+        delete t;
+        break;
+      }
+      case CLIENT_NOTIFICATION: {
+        Notification *notif = (Notification *)msg.data;
+        if (handle_notification(notif)) {
+          screen = NOTIFICATION_SCREEN;
+          changes |= SCREEN_CHANGED;
+        }
+        delete notif;
+        break;
+      }
+      case CLIENT_FIND:
+        vibrate(50, 10);
+        break;
+      case CLIENT_CONNECTED:
+        connected = true;
+        changes |= CONNECTION_CHANGED;
+        break;
+      case CLIENT_DISCONNECTED:
+        connected = false;
+        ++disconnect_count;
+        changes |= CONNECTION_CHANGED;
+        break;
+      }
+    }
     // uart_wait_tx_done(UART_NUM_2, 200 / portTICK_PERIOD_MS);
   }
 }
