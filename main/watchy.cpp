@@ -35,17 +35,11 @@ Gdeh0154d67 display(io);
 Typography typography(display);
 NotificationBuffer notifications;
 Battery battery;
-int time_sync_day;
 RTC_DATA_ATTR time_t boot_time = 0;
 RTC_DATA_ATTR uint8_t prev_day = 0;
 RTC_DATA_ATTR uint8_t prev_hour = 0;
 RTC_DATA_ATTR uint8_t prev_minute = 0;
 RTC_DATA_ATTR uint32_t step_base = 0;
-int screen;
-bool connected;
-unsigned disconnect_count;
-bool ringing;
-bool is_sleeping;
 const char *wdays[] = {"Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"};
 const char *months[] = {"Янв", "Фев", "Мар", "Апр", "Мая", "Июня",
                         "Июля", "Авг", "Сен", "Окт", "Ноя", "Дек"};
@@ -63,9 +57,9 @@ const char *months[] = {"Янв", "Фев", "Мар", "Апр", "Мая", "Ию�
 #define WHOLE_SCREEN 3
 #define REFRESH_SCREEN 4
 
-void sync_current_time(tm* subj) {
-  if (subj->tm_mday != time_sync_day) {
-    time_sync_day = subj->tm_mday;
+void sync_current_time(tm* subj, int* ts_day) {
+  if (subj->tm_mday != *ts_day) {
+    *ts_day = subj->tm_mday;
     set_rtc_time(subj);
   }
 }
@@ -78,6 +72,7 @@ void draw_main_screen(tm* time,
                       bool is_sleeping,
                       uint32_t step_counter,
                       uint8_t battery_level,
+                      bool connected,
                       int update_mode) {
   if (update_mode == NOTHING)
     return;
@@ -200,13 +195,13 @@ bool handle_notification(Notification* subj) {
   ESP_LOGI(TAG, "New notification, icon: %u, state: %u, %s",
            subj->icon, subj->state, subj->text);
   if (subj->icon == 1) {
-    ringing = true;
     notifications.add(subj->text);
     // TODO find better solution
+    // TODO handle phone ring start
     vibrate(100, 10);
     return true;
   } else if (subj->icon == 2) {
-    ringing = false;
+    // TODO handle phone ring end
     return false; // its empty no need to display
   }
   preprocess_notification(subj);
@@ -218,7 +213,7 @@ bool handle_notification(Notification* subj) {
   return false;
 }
 
-void draw_info() {
+void draw_info(unsigned disconnect_count) {
   display.fillScreen(EPD_WHITE);
   char buf[22];
   SET_FONT(typography, ter_x28b_pcf28pt);
@@ -302,11 +297,13 @@ int time_changes(tm* subj, int changes) {
   return changes;
 }
 
-void update_display(tm* now, bool valid, int changes) {
+void update_display(tm* now, bool valid,
+                    int screen, int changes,
+                    bool connected, unsigned disconnect_count) {
   if (changes) {
     ESP_LOGI(TAG, "Applying changes: %x", changes);
     if (screen == INFO_SCREEN) {
-      draw_info();
+      draw_info(disconnect_count);
       display.deepSleep();
     } else if (screen == NOTIFICATION_SCREEN) {
       if (notifications.get_current()) {
@@ -333,6 +330,7 @@ void update_display(tm* now, bool valid, int changes) {
       draw_main_screen(now, valid, false,
                        step_counter() + step_base,
                        battery.get_level(),
+                       connected,
                        update_mode);
       display.deepSleep();
     }
@@ -343,7 +341,7 @@ void draw_sleeping_screen() {
   struct tm now;
   bool valid = get_rtc_time(&now);
   draw_main_screen(&now, valid, true, step_base,
-                   battery.get_level(), WHOLE_SCREEN);
+                   battery.get_level(), false, WHOLE_SCREEN);
   display.deepSleep();
 }
 
@@ -352,11 +350,10 @@ extern "C" void app_main()
   ESP_LOGI(TAG, "Enter app_main()");
   // esp_deep_sleep_start();
 
-  time_sync_day = 0;
-  screen = MAIN_SCREEN;
-  connected = false;
-  disconnect_count = 0;
-  ringing = false;
+  int time_sync_day = 0;
+  int screen = MAIN_SCREEN;
+  bool connected = false;
+  unsigned disconnect_count = 0;
   bool poweron = false;
 
   uint32_t wakeup_reason = esp_sleep_get_wakeup_causes(); // get wake up reason
@@ -416,7 +413,8 @@ extern "C" void app_main()
       step_base = 0;
     }
 
-    update_display(&now, valid, changes);
+    update_display(&now, valid, screen, changes,
+                   connected, disconnect_count);
 
     changes = 0;
     struct Message msg;
@@ -453,7 +451,7 @@ extern "C" void app_main()
       case ACCEL_NO_MOTION:
         ESP_LOGI(TAG, "No motion for 2.5 minutes, falling asleep");
         draw_main_screen(&now, valid, true, step_base,
-                         battery.get_level(), WHOLE_SCREEN);
+                         battery.get_level(), false, WHOLE_SCREEN);
         display.deepSleep();
         deep_sleep();
         break;
@@ -467,7 +465,7 @@ extern "C" void app_main()
         ESP_LOGI(TAG, "Got time: %u-%u-%u %u:%u:%u",
                  t->tm_year, t->tm_mon, t->tm_mday,
                  t->tm_hour, t->tm_min, t->tm_sec);
-        sync_current_time(t);
+        sync_current_time(t, &time_sync_day);
         delete t;
         break;
       }
