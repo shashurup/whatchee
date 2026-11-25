@@ -40,7 +40,6 @@ RTC_DATA_ATTR time_t boot_time = 0;
 RTC_DATA_ATTR uint8_t prev_day = 0;
 RTC_DATA_ATTR uint8_t prev_hour = 0;
 RTC_DATA_ATTR uint8_t prev_minute = 0;
-RTC_DATA_ATTR bool prev_sleeping = false;
 RTC_DATA_ATTR uint32_t step_base = 0;
 int screen;
 bool screen_changed;
@@ -49,11 +48,38 @@ bool connected;
 bool prev_connected;
 unsigned disconnect_count;
 bool ringing;
-bool sleeping;
+bool is_sleeping;
 const char *wdays[] = {"Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"};
 const char *months[] = {"Янв", "Фев", "Мар", "Апр", "Мая", "Июня",
                         "Июля", "Авг", "Сен", "Окт", "Ноя", "Дек"};
 
+#define NOTHING 0
+#define LAST_DIGIT 1
+#define LAST_TWO_DIGITS 2
+#define WHOLE_SCREEN 3
+#define REFRESH_SCREEN 4
+
+int screen_update_mode(tm* time,
+                       bool is_time_valid,
+                       uint8_t prev_minute,
+                       uint8_t prev_hour,
+                       uint8_t prev_day,
+                       bool prev_is_connected,
+                       bool is_connected) {
+  if (prev_day != time->tm_mday)
+    return REFRESH_SCREEN;
+  if (!is_time_valid)
+    return REFRESH_SCREEN;
+  if (prev_is_connected != is_connected)
+    return WHOLE_SCREEN;
+  if (prev_hour != time->tm_hour)
+    return WHOLE_SCREEN;
+  if (prev_minute / 10 != time->tm_min / 10)
+    return LAST_TWO_DIGITS;
+  if (prev_minute != time->tm_min)
+    return LAST_DIGIT;
+  return NOTHING;
+}
 
 void sync_current_time(tm* subj) {
   if (subj->tm_mday != time_sync_day) {
@@ -65,14 +91,21 @@ void sync_current_time(tm* subj) {
 // index of the minutes units digit in the "HH:MM" string
 #define MIN_UNIT_IDX 4
 
-void draw_main_screen(tm* time, bool valid) {
+void draw_main_screen(tm* time,
+                      bool is_time_valid,
+                      bool is_sleeping,
+                      uint32_t step_counter,
+                      uint8_t battery_level,
+                      int update_mode) {
+  if (update_mode == NOTHING)
+    return;
   display.fillScreen(EPD_WHITE);
   char hour_min[] = "--:--";
-  if (valid) {
+  if (is_time_valid) {
     sprintf(hour_min, "%02d:%02d", time->tm_hour, time->tm_min);
     // During deep sleep the screen is updated only every 10 minutes,
     // so the units of minutes are unknown most of the time
-    if (sleeping)
+    if (is_sleeping)
       hour_min[MIN_UNIT_IDX] = '-';
   }
   SET_FONT(typography, C059_Bold37pt);
@@ -82,10 +115,10 @@ void draw_main_screen(tm* time, bool valid) {
   y += hm_h;
 
   display.drawRect(10, 104, 180, 5, EPD_BLACK);
-  display.fillRect(10, 105, 180 * battery.get_level() / 100, 4, EPD_BLACK);
+  display.fillRect(10, 105, 180 * battery_level / 100, 4, EPD_BLACK);
   
   char day_month[11] = "---";
-  if (valid)
+  if (is_time_valid)
     sprintf(day_month, "%s %d %s",
             wdays[time->tm_wday], time->tm_mday, months[time->tm_mon]);
   SET_FONT(typography, ter_x32b_pcf32pt);
@@ -93,18 +126,17 @@ void draw_main_screen(tm* time, bool valid) {
   y += typography.PrintCentered(day_month, y);
 
   y += 10;
-  if (sleeping)
+  if (is_sleeping)
     typography.PrintCentered("сон", y);
   else if (!connected)
     typography.PrintCentered("разрыв", y);
   else {
-    uint32_t counter = step_counter() + step_base;
     char counter_str[20];
-    sprintf(counter_str, "%lu", counter);
+    sprintf(counter_str, "%lu", step_counter);
     typography.PrintCentered(counter_str, y);
   }
 
-  if (valid && prev_day != time->tm_mday)
+  if (update_mode == REFRESH_SCREEN)
     display.update();
   else {
     // only last digit by defalt
@@ -114,20 +146,16 @@ void draw_main_screen(tm* time, bool valid) {
     uint32_t upd_y = hm_y;
     // add 15 pixel, for some reason lower part doesn't update
     uint32_t upd_h = hm_h + 15;
-    if (!valid ||
-        prev_hour != time->tm_hour ||
-        prev_sleeping != sleeping ||
-        screen_changed ||
-        prev_connected != connected) {
-      // the whole screen each hour
+    if (update_mode == LAST_TWO_DIGITS) {
+      // last two digits every 10 minutes
+      upd_x = GDEH0154D67_WIDTH / 2;
+      upd_w = GDEH0154D67_WIDTH / 2;
+    }
+    else if (update_mode == WHOLE_SCREEN) {
       upd_x = 0;
       upd_y = 0;
       upd_w = GDEH0154D67_WIDTH;
       upd_h = GDEH0154D67_HEIGHT;
-    } else if (prev_minute / 10 != time->tm_min / 10) {
-      // last two digits every 10 minutes
-      upd_x = GDEH0154D67_WIDTH / 2;
-      upd_w = GDEH0154D67_WIDTH / 2;
     }
     ESP_LOGD(TAG, "upd_x: %lu, upd_y: %lu, upd_w: %lu, upd_h: %lu",
              upd_x, upd_y, upd_w, upd_h);
@@ -228,8 +256,12 @@ void draw_info() {
   display.updateWindow(0, 0, GDEH0154D67_WIDTH, GDEH0154D67_HEIGHT, false);
 }
 
-bool sleeping_hours(struct tm& now) {
-  return now.tm_hour < 8 || now.tm_hour >= 21;
+void draw_sleeping_screen(int update_mode) {
+  struct tm now;
+  bool valid = get_rtc_time(&now);
+  draw_main_screen(&now, valid, true, step_base,
+                   battery.get_level(), update_mode);
+  display.deepSleep();
 }
 
 // Deep sleep period in minutes, wake ups are aligned to it
@@ -267,7 +299,6 @@ void idle_tasks() {
   bool valid = get_rtc_time(&now);
   if (valid) {
     battery.measure(&now);
-    // sleeping = sleeping_hours(now);
     if (now.tm_hour != prev_hour) {
       send_battery(battery.get_level());
       send_step_counter(step_counter() + step_base);
@@ -295,15 +326,18 @@ void idle_tasks() {
     displayed_notification = notifications.get_current();
   }
   else if (screen == MAIN_SCREEN) {
-    if (!valid ||
-        now.tm_min != prev_minute ||
-        prev_sleeping != sleeping ||
-        prev_connected != connected ||
-        screen_changed) {
-      ESP_LOGI(TAG, "Updating main screen");
-      draw_main_screen(&now, valid);
-      display.deepSleep();
-    }
+    int update_mode = screen_update_mode(&now, valid, prev_minute,
+                                         prev_hour, prev_day,
+                                         prev_connected, connected);
+    ESP_LOGI(TAG, "upd mode %d, %d, %d, %d, %d", prev_minute, prev_hour, prev_day, prev_connected, connected);
+    if (screen_changed)
+      update_mode = WHOLE_SCREEN;
+    ESP_LOGI(TAG, "Updating main screen, mode: %d", update_mode);
+    draw_main_screen(&now, valid, false,
+                     step_counter() + step_base,
+                     battery.get_level(),
+                     update_mode);
+    display.deepSleep();
   }
   else if (screen == INFO_SCREEN && screen_changed) {
     draw_info();
@@ -315,16 +349,14 @@ void idle_tasks() {
     prev_hour = now.tm_hour;
     prev_minute = now.tm_min;
   }
-  prev_sleeping = sleeping;
   screen_changed = false;
+  prev_connected = connected;
 
   if (ringing) {
     // TODO find better solution
     vibrate(100, 20);
     ringing = false;
   }
-  if (sleeping)
-    deep_sleep();
 }
 
 void setup_pm() {
@@ -359,36 +391,32 @@ extern "C" void app_main()
   prev_connected = false;
   disconnect_count = 0;
   ringing = false;
-  sleeping = false;
   bool poweron = false;
 
   uint32_t wakeup_reason = esp_sleep_get_wakeup_causes(); // get wake up reason
   ESP_LOGI(TAG, "Wakeup reason: %d", wakeup_reason);
-  if (wakeup_reason & BIT(ESP_SLEEP_WAKEUP_TIMER)) {
-    sleeping = true;
-  }
-  if (wakeup_reason & BIT(ESP_SLEEP_WAKEUP_EXT1)) {
-    
-  }
   if (wakeup_reason == 0) {
     poweron = true;
     boot_time = 0;
     prev_day = 0;
     prev_hour = 0;
     prev_minute = 0;
-    prev_sleeping = false;
   }
   setup_nvs();
   setup_misc_hw();
   add_accel_device();
   display.init();
   display.setRefresh(poweron);
-  idle_tasks();
+  if (wakeup_reason & BIT(ESP_SLEEP_WAKEUP_TIMER)) {
+    draw_sleeping_screen(LAST_TWO_DIGITS);
+    deep_sleep();
+  }
   setup_pm();
   setup_main_queue();
   setup_accel();
   accel_wait_idle();
   setup_ble("Whatcheee");
+  idle_tasks();
 
   // notifications.add("Довольно короткое сообщение №1 123456 code");
   // notifications.add("Quite short test message 2\nwith line breaks и т.д. и т.р. and so on");
@@ -427,7 +455,8 @@ extern "C" void app_main()
           ESP_LOGI(TAG, "Button %u released", (unsigned)msg.data);
           break;
         case ACCEL_NO_MOTION:
-          ESP_LOGI(TAG, "No motion for 2.5 minutes");
+          ESP_LOGI(TAG, "No motion for 2.5 minutes, falling asleep");
+          draw_sleeping_screen(WHOLE_SCREEN);
           deep_sleep();
           break;
         case CLIENT_SUBSCRIBED:
@@ -457,11 +486,9 @@ extern "C" void app_main()
           vibrate(50, 10);
           break;
         case CLIENT_CONNECTED:
-          prev_connected = connected;
           connected = true;
           break;
         case CLIENT_DISCONNECTED:
-          prev_connected = connected;
           connected = false;
           ++disconnect_count;
           break;
