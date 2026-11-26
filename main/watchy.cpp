@@ -297,6 +297,24 @@ int time_changes(tm* subj, int changes) {
   return changes;
 }
 
+int calc_update_mode(bool valid, int changes) {
+  if (!valid)
+    return REFRESH_SCREEN;
+  else if (changes & DAY_CHANGED)
+    return REFRESH_SCREEN;
+  else if (changes & SCREEN_CHANGED)
+    return WHOLE_SCREEN;
+  else if (changes & CONNECTION_CHANGED)
+    return WHOLE_SCREEN;
+  else if (changes & HOUR_CHANGED)
+    return WHOLE_SCREEN;
+  else if (changes & DECADE_CHANGED)
+    return LAST_TWO_DIGITS;
+  else if (changes & MINUTE_CHANGED)
+    return LAST_DIGIT;
+  return NOTHING;
+}
+
 void update_display(tm* now, bool valid,
                     int screen, int changes,
                     bool connected, unsigned disconnect_count) {
@@ -311,21 +329,7 @@ void update_display(tm* now, bool valid,
         display.deepSleep();
       }
     } else if (screen == MAIN_SCREEN) {
-      int update_mode = NOTHING;
-      if (changes & DAY_CHANGED)
-        update_mode = REFRESH_SCREEN;
-      else if (!valid)
-        update_mode = REFRESH_SCREEN;
-      else if (changes & SCREEN_CHANGED)
-        update_mode = WHOLE_SCREEN;
-      else if (changes & CONNECTION_CHANGED)
-        update_mode = WHOLE_SCREEN;
-      else if (changes & HOUR_CHANGED)
-        update_mode = WHOLE_SCREEN;
-      else if (changes & DECADE_CHANGED)
-        update_mode = LAST_TWO_DIGITS;
-      else if (changes & MINUTE_CHANGED)
-        update_mode = LAST_DIGIT;
+      int update_mode = calc_update_mode(valid, changes);
       ESP_LOGI(TAG, "Updating main screen, mode: %d", update_mode);
       draw_main_screen(now, valid, false,
                        step_counter() + step_base,
@@ -340,8 +344,13 @@ void update_display(tm* now, bool valid,
 void draw_sleeping_screen() {
   struct tm now;
   bool valid = get_rtc_time(&now);
+  int changes =  valid ? time_changes(&now, 0) : 0;
+  int update_mode = calc_update_mode(valid, changes);
+  if (changes & DAY_CHANGED)
+    step_base = 0;
+  ESP_LOGI(TAG, "Updating main screen, mode: %d", update_mode);
   draw_main_screen(&now, valid, true, step_base,
-                   battery.get_level(), false, WHOLE_SCREEN);
+                   battery.get_level(), false, update_mode);
   display.deepSleep();
 }
 
