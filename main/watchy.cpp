@@ -36,9 +36,6 @@ Typography typography(display);
 NotificationBuffer notifications;
 Battery battery;
 RTC_DATA_ATTR time_t boot_time = 0;
-RTC_DATA_ATTR uint8_t prev_day = 0;
-RTC_DATA_ATTR uint8_t prev_hour = 0;
-RTC_DATA_ATTR uint8_t prev_minute = 0;
 RTC_DATA_ATTR uint32_t step_base = 0;
 const char *wdays[] = {"Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"};
 const char *months[] = {"Янв", "Фев", "Мар", "Апр", "Мая", "Июня",
@@ -248,8 +245,6 @@ uint32_t time_to_next_interval(const tm& now) {
 
 void deep_sleep() {
   battery.flush();
-  step_base += step_counter();
-  hibernate_accel();
   struct tm now;
   uint64_t sleep_us = (uint64_t)sleep_interval_min * 60 * 1000000;
   if (get_rtc_time(&now))
@@ -283,6 +278,9 @@ void setup_nvs() {
 }
 
 int time_changes(tm* subj, int changes) {
+  static RTC_DATA_ATTR uint8_t prev_day = 0;
+  static RTC_DATA_ATTR uint8_t prev_hour = 0;
+  static RTC_DATA_ATTR uint8_t prev_minute = 0;
   if (subj->tm_min != prev_minute)
     changes |= MINUTE_CHANGED;
   if (subj->tm_min / 10 != prev_minute / 10)
@@ -363,17 +361,10 @@ extern "C" void app_main()
   int screen = MAIN_SCREEN;
   bool connected = false;
   unsigned disconnect_count = 0;
-  bool poweron = false;
 
   uint32_t wakeup_reason = esp_sleep_get_wakeup_causes(); // get wake up reason
   ESP_LOGI(TAG, "Wakeup reason: %d", wakeup_reason);
-  if (wakeup_reason == 0) {
-    poweron = true;
-    boot_time = 0;
-    prev_day = 0;
-    prev_hour = 0;
-    prev_minute = 0;
-  }
+  bool poweron = wakeup_reason == 0;
   setup_nvs();
   setup_misc_hw();
   add_accel_device();
@@ -459,6 +450,8 @@ extern "C" void app_main()
         break;
       case ACCEL_NO_MOTION:
         ESP_LOGI(TAG, "No motion for 2.5 minutes, falling asleep");
+        step_base += step_counter();
+        hibernate_accel();
         draw_main_screen(&now, valid, true, step_base,
                          battery.get_level(), false, WHOLE_SCREEN);
         display.deepSleep();
